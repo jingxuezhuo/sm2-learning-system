@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SM-2 学习系统</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const API = 'http://localhost:5001/api';
+
+        function App() {
+            const [token, setToken] = useState(localStorage.getItem('token'));
+            const [user, setUser] = useState(localStorage.getItem('username'));
+
+            if (!token) return <Login onLogin={(t, u) => { localStorage.setItem('token', t); localStorage.setItem('username', u); setToken(t); setUser(u); }} />;
+
+            const logout = () => { localStorage.clear(); setToken(null); setUser(null); };
+            return <Main user={user} token={token} onLogout={logout} />;
+        }
+
+        function Login({ onLogin }) {
+            const [mode, setMode] = useState('login');
+            const [username, setUsername] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+
+            const submit = async (e) => {
+                e.preventDefault();
+                try {
+                    const res = await fetch(`${API}/auth/${mode}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const data = await res.json();
+                    if (res.ok) onLogin(data.token, data.username);
+                    else setError(data.error);
+                } catch (e) {
+                    setError('网络错误');
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center">
+                    <div className="bg-white rounded-3xl shadow-2xl p-10 w-96">
+                        <div className="text-center mb-8">
+                            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4">SM</div>
+                            <h1 className="text-3xl font-bold mb-2">SM-2 学习系统</h1>
+                        </div>
+                        <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
+                            <button onClick={() => setMode('login')} className={`flex-1 py-2 rounded-lg ${mode === 'login' ? 'bg-white shadow' : ''}`}>登录</button>
+                            <button onClick={() => setMode('register')} className={`flex-1 py-2 rounded-lg ${mode === 'register' ? 'bg-white shadow' : ''}`}>注册</button>
+                        </div>
+                        <form onSubmit={submit} className="space-y-4">
+                            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full border-2 rounded-lg px-4 py-3" placeholder="用户名" required />
+                            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full border-2 rounded-lg px-4 py-3" placeholder="密码(至少6位)" required minLength="6" />
+                            {error && <div className="bg-red-50 p-3 rounded text-red-700 text-sm">{error}</div>}
+                            <button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 rounded-lg font-medium">{mode === 'login' ? '登录' : '注册'}</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function Main({ user, token, onLogout }) {
+            const [tab, setTab] = useState('library');
+            const [cards, setCards] = useState([]);
+            const [filtered, setFiltered] = useState([]);
+            const [due, setDue] = useState([]);
+            const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+            const [stats, setStats] = useState({ total: 0, due: 0 });
+            const [msg, setMsg] = useState('');
+            const [done, setDone] = useState(new Set());
+            const [tags, setTags] = useState([]);
+            const [search, setSearch] = useState('');
+            const [filterTags, setFilterTags] = useState([]);
+            const [filterProf, setFilterProf] = useState('all');
+            const [dateStart, setDateStart] = useState('');
+            const [dateEnd, setDateEnd] = useState('');
+            const [showAdd, setShowAdd] = useState(false);
+            const [showBatch, setShowBatch] = useState(false);
+            const [showNote, setShowNote] = useState(false);
+            const [showHist, setShowHist] = useState(false);
+            const [curr, setCurr] = useState(null);
+            const [page, setPage] = useState(1);
+            const perPage = 100;
+
+            const api = async (url, opt = {}) => {
+                const h = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...opt.headers };
+                return fetch(`${API}${url}`, { ...opt, headers: h });
+            };
+
+            useEffect(() => {
+                load();
+            }, [tab, date]);
+
+            useEffect(() => {
+                filter();
+            }, [cards, search, filterTags, filterProf, dateStart, dateEnd]);
+
+            const load = async () => {
+                try {
+                    const r1 = await api('/stats');
+                    const d1 = await r1.json();
+                    setStats(d1);
+
+                    const r2 = await api('/tags');
+                    const d2 = await r2.json();
+                    setTags(d2.tags || []);
+
+                    if (tab === 'today') {
+                        const r3 = await api('/cards/due', { method: 'POST', body: JSON.stringify({ date }) });
+                        const d3 = await r3.json();
+                        setDue(d3.cards || []);
+                    } else {
+                        const r4 = await api('/cards');
+                        const d4 = await r4.json();
+                        setCards(d4.cards || []);
+                    }
+                } catch (e) { }
+            };
+
+            const filter = () => {
+                let f = [...cards];
+                if (search) f = f.filter(c => c.card_id.includes(search));
+                if (filterTags.length) f = f.filter(c => filterTags.some(t => c.tags?.includes(t)));
+                if (filterProf !== 'all') {
+                    f = f.filter(c => {
+                        const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
+                        return s === parseInt(filterProf);
+                    });
+                }
+                if (dateStart) f = f.filter(c => c.first_date >= dateStart);
+                if (dateEnd) f = f.filter(c => c.first_date <= dateEnd);
+                setFiltered(f);
+            };
+
+            const review = async (id, score) => {
+                try {
+                    await api('/cards/review', { method: 'POST', body: JSON.stringify({ card_id: id, score, review_date: date }) });
+                    setDone(prev => new Set([...prev, id]));
+                    setMsg('✅ 复习成功');
+                    setTimeout(() => setMsg(''), 2000);
+                    load();
+                } catch (e) { }
+            };
+
+            const add = async (id, name, score, tags) => {
+                try {
+                    const res = await api('/cards/add', { method: 'POST', body: JSON.stringify({ card_id: id, name, first_date: date, score, tags }) });
+                    if (res.ok) {
+                        setMsg('✅ 添加成功');
+                        setTimeout(() => setMsg(''), 2000);
+                        load();
+                        return true;
+                    }
+                } catch (e) { }
+                return false;
+            };
+
+            const update = async (id, upd) => {
+                try {
+                    await api('/cards/update', { method: 'POST', body: JSON.stringify({ card_id: id, ...upd }) });
+                    load();
+                } catch (e) { }
+            };
+
+            const del = async (id) => {
+                if (!confirm('确定删除？')) return;
+                try {
+                    const res = await api(`/cards/${id}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        setMsg('✅ 删除成功');
+                        setTimeout(() => setMsg(''), 2000);
+                        load();
+                    }
+                } catch (e) { }
+            };
+
+            const start = (page - 1) * perPage;
+            const current = filtered.slice(start, start + perPage);
+            const totalPages = Math.ceil(filtered.length / perPage);
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+                    {msg && <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50">{msg}</div>}
+
+                    <div className="bg-white shadow">
+                        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between">
+                            <div className="flex items-center space-x-4">
+                                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">SM</div>
+                                <h1 className="text-2xl font-bold">SM-2 学习系统</h1>
+                            </div>
+                            <div className="flex items-center space-x-6">
+                                <div className="text-center">
+                                    <div className="text-sm text-gray-500">今日进度</div>
+                                    <div className="text-xl font-bold"><span className="text-green-600">{done.size}</span>/<span className="text-blue-600">{due.length}</span></div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-sm text-gray-500">题库总量</div>
+                                    <div className="text-xl font-bold text-purple-600">{stats.total}</div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-gray-600">👤 {user}</span>
+                                    <button onClick={onLogout} className="text-sm text-red-500 hover:text-red-700">退出</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-7xl mx-auto px-6 py-8">
+                        <div className="bg-white rounded-t-xl shadow border-b">
+                            <div className="flex">
+                                <button onClick={() => setTab('library')} className={`px-8 py-4 font-semibold ${tab === 'library' ? 'bg-blue-50 text-blue-600 border-b-4 border-blue-500' : 'text-gray-500'}`}>📚 题库</button>
+                                <button onClick={() => setTab('today')} className={`px-8 py-4 font-semibold ${tab === 'today' ? 'bg-blue-50 text-blue-600 border-b-4 border-blue-500' : 'text-gray-500'}`}>🎯 今日复习</button>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-b-xl shadow-lg p-8">
+                            {tab === 'today' ? (
+                                <div>
+                                    <div className="mb-8 flex justify-between">
+                                        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border-2 rounded-lg px-4 py-2" />
+                                        <button onClick={() => setShowBatch(true)} className="bg-blue-500 text-white px-6 py-3 rounded-lg">➕ 添加题目</button>
+                                    </div>
+                                    {due.length === 0 ? (
+                                        <div className="text-center py-20"><div className="text-6xl mb-4">🎉</div><p className="text-2xl">今天没有需要复习的题目！</p></div>
+                                    ) : (
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left">✅</th>
+                                                    <th className="px-4 py-3 text-left">🌟</th>
+                                                    <th className="px-4 py-3 text-left">题号</th>
+                                                    <th className="px-4 py-3 text-left">名称</th>
+                                                    <th className="px-4 py-3 text-left">评分</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {due.map((c, i) => {
+                                                    const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
+                                                    return (
+                                                        <tr key={i} className={done.has(c.card_id) ? 'bg-green-50' : 'hover:bg-blue-50'}>
+                                                            <td className="px-4 py-3">{done.has(c.card_id) && '✓'}</td>
+                                                            <td className="px-4 py-3">{'⭐'.repeat(s)}</td>
+                                                            <td className="px-4 py-3 font-bold">{c.card_id}</td>
+                                                            <td className="px-4 py-3">{c.name || '-'}</td>
+                                                            <td className="px-4 py-3">
+                                                                <div className="flex space-x-2">
+                                                                    {[1, 2, 3, 4, 5].map(n => (
+                                                                        <button key={n} onClick={() => review(c.card_id, n)} disabled={done.has(c.card_id)} className={`w-10 h-10 border-2 rounded font-bold ${done.has(c.card_id) ? 'bg-gray-100 text-gray-400' : 'hover:bg-blue-500 hover:text-white'}`}>{n}</button>
+                                                                    ))}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            ) : (
+                                <Library cards={current} total={filtered.length} page={page} setPage={setPage} totalPages={totalPages} setShowAdd={setShowAdd} update={update} del={del} search={search} setSearch={setSearch} filterTags={filterTags} setFilterTags={setFilterTags} filterProf={filterProf} setFilterProf={setFilterProf} dateStart={dateStart} setDateStart={setDateStart} dateEnd={dateEnd} setDateEnd={setDateEnd} tags={tags} setCurr={setCurr} setShowNote={setShowNote} setShowHist={setShowHist} />
+                            )}
+                        </div>
+                    </div>
+
+                    {showAdd && <AddModal date={date} setDate={setDate} onAdd={add} onClose={() => setShowAdd(false)} />}
+                    {showBatch && <BatchModal date={date} setDate={setDate} onAdd={async (items) => {
+                        for (const item of items) await add(item.id, '', item.score, []);
+                        load();
+                        setShowBatch(false);
+                    }} onClose={() => setShowBatch(false)} />}
+                    {showNote && curr && <NoteEditor card={curr} token={token} onSave={(note) => { update(curr.card_id, { note }); setShowNote(false); setCurr(null); }} onClose={() => { setShowNote(false); setCurr(null); }} />}
+                    {showHist && curr && <HistModal card={curr} onClose={() => { setShowHist(false); setCurr(null); }} />}
+                </div>
+            );
+        }
+
+        function Library({ cards, total, page, setPage, totalPages, setShowAdd, update, del, search, setSearch, filterTags, setFilterTags, filterProf, setFilterProf, dateStart, setDateStart, dateEnd, setDateEnd, tags, setCurr, setShowNote, setShowHist }) {
+            const [showTags, setShowTags] = useState(false);
+            const [menu, setMenu] = useState(null);
+
+            return (
+                <>
+                    <div className="mb-6 bg-gray-50 border-2 rounded-xl p-6 pb-20 relative">
+                        <div className="grid grid-cols-4 gap-4">
+                            <div><label className="block text-sm mb-2">🔍 题号</label><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full border-2 rounded px-4 py-2" /></div>
+                            <div className="relative">
+                                <label className="block text-sm mb-2">🏷️ 标签</label>
+                                <button onClick={() => setShowTags(!showTags)} className="w-full border-2 rounded px-4 py-2 bg-white flex justify-between">
+                                    <span className="truncate">{filterTags.length ? `${filterTags.length}个` : '选择'}</span><span>▼</span>
+                                </button>
+                                {showTags && (
+                                    <div className="absolute z-10 mt-1 w-full bg-white border-2 rounded shadow-lg max-h-64 overflow-y-auto">
+                                        <div onClick={() => setFilterTags(filterTags.length === tags.length ? [] : [...tags])} className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b bg-gray-50">
+                                            <input type="checkbox" checked={filterTags.length === tags.length} readOnly className="mr-2" />全选
+                                        </div>
+                                        {tags.map(t => (
+                                            <div key={t} onClick={() => setFilterTags(filterTags.includes(t) ? filterTags.filter(x => x !== t) : [...filterTags, t])} className="px-4 py-2 hover:bg-blue-50 cursor-pointer">
+                                                <input type="checkbox" checked={filterTags.includes(t)} readOnly className="mr-2" />{t}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div><label className="block text-sm mb-2">⭐ 熟练度</label>
+                                <select value={filterProf} onChange={(e) => setFilterProf(e.target.value)} className="w-full border-2 rounded px-3 py-2 text-sm">
+                                    <option value="all">全部</option>
+                                    {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{n}分</option>)}
+                                </select>
+                            </div>
+                            <div><label className="block text-sm mb-2">📅 时间</label>
+                                <div className="flex space-x-2">
+                                    <input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="w-1/2 border-2 rounded px-2 py-2 text-sm" />
+                                    <input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="w-1/2 border-2 rounded px-2 py-2 text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="absolute bottom-6 right-6">
+                            <button onClick={() => setShowAdd(true)} className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-lg font-medium">➕ 添加题目</button>
+                        </div>
+                    </div>
+
+                    <div className="mb-4 text-sm text-gray-600">共 <span className="font-bold text-blue-600">{total}</span> 个题目</div>
+
+                    <table className="w-full mb-8">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-3 text-left">🌟</th>
+                                <th className="px-4 py-3 text-left">题号</th>
+                                <th className="px-4 py-3 text-left">名称</th>
+                                <th className="px-4 py-3 text-left">标签</th>
+                                <th className="px-4 py-3 text-left">最近完成</th>
+                                <th className="px-4 py-3 text-left">下次复习</th>
+                                <th className="px-4 py-3 text-left">备注</th>
+                                <th className="px-4 py-3 text-left">更多</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {cards.length === 0 ? (
+                                <tr><td colSpan="8" className="text-center py-20 text-gray-400">暂无数据</td></tr>
+                            ) : (
+                                cards.map((c, i) => {
+                                    const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
+                                    return (
+                                        <tr key={i} className="border-t hover:bg-blue-50">
+                                            <td className="px-4 py-3">{'⭐'.repeat(s)}</td>
+                                            <td className="px-4 py-3 font-bold">{c.card_id}</td>
+                                            <td className="px-4 py-3 max-w-xs truncate">
+                                                <EditField val={c.name} save={(v) => update(c.card_id, { name: v })} />
+                                            </td>
+                                            <td className="px-4 py-3"><Tags tags={c.tags || []} save={(t) => update(c.card_id, { tags: t })} /></td>
+                                            <td className="px-4 py-3 text-sm text-gray-600">{c.first_date}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-600">{c.next_review || '-'}</td>
+                                            <td className="px-4 py-3"><button onClick={() => { setCurr(c); setShowNote(true); }} className="text-blue-500 text-sm">{c.note ? '查看' : '添加'}</button></td>
+                                            <td className="px-4 py-3 relative">
+                                                <button onClick={() => setMenu(menu === i ? null : i)} className="text-gray-600 text-sm px-3 py-1 border rounded">更多</button>
+                                                {menu === i && (
+                                                    <div className="absolute right-0 mt-1 bg-white border-2 shadow-lg rounded z-10 w-32">
+                                                        <button onClick={() => { setCurr(c); setShowHist(true); setMenu(null); }} className="block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm">查看历史</button>
+                                                        <button onClick={() => { del(c.card_id); setMenu(null); }} className="block w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 text-sm">删除</button>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+
+                    {totalPages > 1 && (
+                        <div className="flex justify-center space-x-2">
+                            <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1} className="px-4 py-2 border-2 rounded">←</button>
+                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(p => (
+                                <button key={p} onClick={() => setPage(p)} className={`px-4 py-2 rounded ${page === p ? 'bg-blue-500 text-white' : 'border-2'}`}>{p}</button>
+                            ))}
+                            <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages} className="px-4 py-2 border-2 rounded">→</button>
+                        </div>
+                    )}
+                </>
+            );
+        }
+
+        function EditField({ val, save }) {
+            const [edit, setEdit] = useState(false);
+            const [text, setText] = useState(val || '');
+            if (edit) return <input value={text} onChange={(e) => setText(e.target.value)} onBlur={() => { save(text); setEdit(false); }} className="border rounded px-2 py-1 text-sm w-full" autoFocus />;
+            return <div onClick={() => setEdit(true)} className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded truncate">{val || <span className="text-gray-400 text-sm">添加</span>}</div>;
+        }
+
+        function Tags({ tags, save }) {
+            const [edit, setEdit] = useState(false);
+            const [tag, setTag] = useState('');
+            return (
+                <div className="flex flex-wrap gap-1">
+                    {tags.map(t => <span key={t} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">{t}<button onClick={() => save(tags.filter(x => x !== t))} className="ml-1 hover:text-red-600">×</button></span>)}
+                    {edit ? <input value={tag} onChange={(e) => setTag(e.target.value)} onBlur={() => { if (tag.trim()) save([...tags, tag.trim()]); setEdit(false); setTag(''); }} className="border rounded px-2 py-1 text-xs w-20" autoFocus /> : <button onClick={() => setEdit(true)} className="text-blue-500 text-xs">+</button>}
+                </div>
+            );
+        }
+
+        function AddModal({ date, setDate, onAdd, onClose }) {
+            const [id, setId] = useState('');
+            const [name, setName] = useState('');
+            const [score, setScore] = useState(3);
+            const [tags, setTags] = useState([]);
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-8 w-96">
+                        <h3 className="text-2xl font-bold mb-6">添加题目</h3>
+                        <div className="space-y-4">
+                            <input type="text" value={id} onChange={(e) => setId(e.target.value)} placeholder="题号" className="w-full border-2 rounded px-4 py-3" />
+                            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="名称" className="w-full border-2 rounded px-4 py-3" />
+                            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border-2 rounded px-4 py-3" />
+                            <div className="flex space-x-2">
+                                {[0, 1, 2, 3, 4, 5].map(s => <button key={s} onClick={() => setScore(s)} className={`flex-1 py-3 rounded font-bold ${score === s ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>{s}</button>)}
+                            </div>
+                            <div className="flex space-x-3">
+                                <button onClick={onClose} className="flex-1 border-2 rounded px-6 py-3">取消</button>
+                                <button onClick={async () => { if (await onAdd(id, name, score, tags)) onClose(); }} className="flex-1 bg-blue-500 text-white rounded px-6 py-3">完成</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function BatchModal({ date, setDate, onAdd, onClose }) {
+            const [text, setText] = useState('');
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-8 w-[700px]">
+                        <h3 className="text-2xl font-bold mb-6">批量添加</h3>
+                        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mb-4 border-2 rounded px-4 py-2" />
+                        <textarea value={text} onChange={(e) => setText(e.target.value)} className="w-full border-2 rounded px-4 py-3 h-64 font-mono" placeholder="201:4&#10;202:3" />
+                        <div className="flex space-x-3 mt-4">
+                            <button onClick={onClose} className="flex-1 border-2 rounded px-6 py-3">取消</button>
+                            <button onClick={() => { const items = text.split('\n').filter(l => l.trim()).map(l => { const [id, s] = l.split(':'); return { id: id.trim(), score: parseInt(s) || 3 }; }); onAdd(items); }} className="flex-1 bg-blue-500 text-white rounded px-6 py-3">完成</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function NoteEditor({ card, token, onSave, onClose }) {
+            const [content, setContent] = useState(card.note || '');
+            const ref = useRef(null);
+            const q = useRef(null);
+
+            useEffect(() => {
+                if (!window.Quill) {
+                    const link = document.createElement('link');
+                    link.href = 'https://cdn.quilljs.com/1.3.6/quill.snow.css';
+                    link.rel = 'stylesheet';
+                    document.head.appendChild(link);
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.quilljs.com/1.3.6/quill.js';
+                    script.onload = init;
+                    document.body.appendChild(script);
+                } else init();
+            }, []);
+
+            const init = () => {
+                if (q.current || !ref.current) return;
+                const quill = new window.Quill(ref.current, { theme: 'snow', modules: { toolbar: [['bold', 'italic'], ['code-block'], ['image']] }, placeholder: '输入备注...' });
+                if (card.note) quill.root.innerHTML = card.note;
+                quill.on('text-change', () => setContent(quill.root.innerHTML));
+                quill.getModule('toolbar').addHandler('image', () => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.click();
+                    input.onchange = () => {
+                        const file = input.files[0];
+                        if (file) {
+                            const fd = new FormData();
+                            fd.append('file', file);
+                            fd.append('card_id', card.card_id);
+                            fetch(`${API}/upload`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: fd }).then(r => r.json()).then(d => {
+                                const range = quill.getSelection(true);
+                                quill.insertEmbed(range.index, 'image', `${API}/images/${d.filename}`);
+                            });
+                        }
+                    };
+                });
+                q.current = quill;
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl w-[90vw] h-[90vh] flex flex-col">
+                        <div className="p-6 border-b flex justify-between bg-blue-50">
+                            <h3 className="text-2xl font-bold">题目 {card.card_id} - 备注</h3>
+                            <button onClick={onClose} className="text-3xl hover:text-red-600">×</button>
+                        </div>
+                        <div className="flex-1 p-6"><div ref={ref} className="h-full border-2 rounded" /></div>
+                        <div className="p-6 border-t flex justify-end space-x-4">
+                            <button onClick={onClose} className="px-6 py-3 border-2 rounded">取消</button>
+                            <button onClick={() => onSave(content)} className="px-6 py-3 bg-blue-500 text-white rounded">保存</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function HistModal({ card, onClose }) {
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-8 w-96">
+                        <div className="flex justify-between mb-6">
+                            <h3 className="text-xl font-bold">题目 {card.card_id} - 历史</h3>
+                            <button onClick={onClose} className="text-2xl hover:text-red-600">×</button>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                            <div>首次完成：{card.first_date}</div>
+                            <div>复习次数：{card.review_count} 次</div>
+                            <div>间隔天数：{card.interval} 天</div>
+                            <div>下次复习：{card.next_review || '-'}</div>
+                        </div>
+                        <button onClick={onClose} className="w-full mt-6 py-2 bg-gray-100 rounded">关闭</button>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+
+</html>
