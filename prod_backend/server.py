@@ -26,18 +26,9 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
-# CORS configuration
-frontend_origins = os.getenv("FRONTEND_ORIGIN", "").split(",")
-if not frontend_origins or frontend_origins == ['']:
-    frontend_origins = ["*"]
-
-CORS(
-    app,
-    resources={r"/api/*": {"origins": frontend_origins}},
-    supports_credentials=True,
-    allow_headers=["Content-Type", "Authorization"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-)
+# ========== 最简单有效的 CORS 配置 ==========
+# 直接允许所有来源（先让它工作，之后再限制）
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -479,5 +470,6 @@ if __name__ == '__main__':
     print("Spaced-Repetition Memory System Backend")
     print("Environment:", ENV)
     print("Port:", PORT)
+    print("CORS: Enabled for all origins")
     print("=" * 50)
     app.run(host="0.0.0.0", port=PORT, debug=(ENV != "production"))
