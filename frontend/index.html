@@ -15,16 +15,12 @@
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
-        const API_ORIGIN =
-            (window.API_ORIGIN) ||
-            (location.hostname === "localhost" || location.hostname === "127.0.0.1"
-                ? "http://localhost:5001"
-                : "https://sm2-learning-system.onrender.com");
+
+        const API_ORIGIN = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+            ? "http://localhost:5001"
+            : "https://sm2-learning-system.onrender.com";
 
         const API = `${API_ORIGIN}/api`;
-
-        // ✅ 自动选择 API：本地用 localhost，上线用 Render 后端域名
-
 
         function App() {
             const [token, setToken] = useState(localStorage.getItem('token'));
@@ -44,6 +40,7 @@
 
             const submit = async (e) => {
                 e.preventDefault();
+                setError('');
                 try {
                     const res = await fetch(`${API}/auth/${mode}`, {
                         method: 'POST',
@@ -52,9 +49,9 @@
                     });
                     const data = await res.json();
                     if (res.ok) onLogin(data.token, data.username);
-                    else setError(data.error);
+                    else setError(data.error || '操作失败');
                 } catch (e) {
-                    setError('网络错误');
+                    setError('网络错误，请检查后端是否运行');
                 }
             };
 
@@ -135,7 +132,9 @@
                         const d4 = await r4.json();
                         setCards(d4.cards || []);
                     }
-                } catch (e) { }
+                } catch (e) {
+                    console.error('加载数据失败:', e);
+                }
             };
 
             const filter = () => {
@@ -160,19 +159,77 @@
                     setMsg('✅ 复习成功');
                     setTimeout(() => setMsg(''), 2000);
                     load();
-                } catch (e) { }
+                } catch (e) {
+                    setMsg('❌ 复习失败');
+                    setTimeout(() => setMsg(''), 2000);
+                }
             };
+            const add = async (id, name, score, cardTags) => {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 10000); // 10秒超时
 
-            const add = async (id, name, score, tags) => {
                 try {
-                    const res = await api('/cards/add', { method: 'POST', body: JSON.stringify({ card_id: id, name, first_date: date, score, tags }) });
+                    const res = await api('/cards/add', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            card_id: id,
+                            name: name || '',
+                            first_date: date,
+                            score,
+                            tags: cardTags || []
+                        }),
+                        signal: controller.signal
+                    });
+
+                    // 不要直接 res.json()，先读 text，再尝试 JSON.parse（避免非 JSON 响应导致前端“卡住”）
+                    const raw = await res.text();
+                    let data = null;
+                    try { data = raw ? JSON.parse(raw) : null; } catch (_) { }
+
                     if (res.ok) {
                         setMsg('✅ 添加成功');
                         setTimeout(() => setMsg(''), 2000);
                         load();
                         return true;
+                    } else {
+                        const msg = (data && data.error) ? data.error : (raw || `HTTP ${res.status}`);
+                        setMsg(`❌ ${msg}`);
+                        setTimeout(() => setMsg(''), 2000);
+                        return false;
                     }
-                } catch (e) { }
+                } catch (e) {
+                    const msg = e.name === 'AbortError' ? '请求超时（后端无响应）' : '网络错误/后端异常';
+                    setMsg(`❌ ${msg}`);
+                    setTimeout(() => setMsg(''), 2000);
+                    return false;
+                } finally {
+                    clearTimeout(timeout);
+                }
+            };
+
+
+
+
+
+
+
+            const batchAdd = async (items) => {
+                try {
+                    const res = await api('/cards/batch', {
+                        method: 'POST',
+                        body: JSON.stringify({ cards: items, date })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setMsg(`✅ 新增 ${data.added.length} 题，复习 ${data.reviewed.length} 题`);
+                        setTimeout(() => setMsg(''), 2000);
+                        load();
+                        return true;
+                    }
+                } catch (e) {
+                    setMsg('❌ 批量添加失败');
+                    setTimeout(() => setMsg(''), 2000);
+                }
                 return false;
             };
 
@@ -180,7 +237,9 @@
                 try {
                     await api('/cards/update', { method: 'POST', body: JSON.stringify({ card_id: id, ...upd }) });
                     load();
-                } catch (e) { }
+                } catch (e) {
+                    console.error('更新失败:', e);
+                }
             };
 
             const del = async (id) => {
@@ -192,7 +251,10 @@
                         setTimeout(() => setMsg(''), 2000);
                         load();
                     }
-                } catch (e) { }
+                } catch (e) {
+                    setMsg('❌ 删除失败');
+                    setTimeout(() => setMsg(''), 2000);
+                }
             };
 
             const start = (page - 1) * perPage;
@@ -216,7 +278,7 @@
                                 </div>
                                 <div className="text-center">
                                     <div className="text-sm text-gray-500">题库总量</div>
-                                    <div className="text-xl font-bold text-purple-600">{stats.total}</div>
+                                    <div className="text-xl font-bold text-purple-600">{stats.total || 0}</div>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                     <span className="text-gray-600">👤 {user}</span>
@@ -236,47 +298,7 @@
 
                         <div className="bg-white rounded-b-xl shadow-lg p-8">
                             {tab === 'today' ? (
-                                <div>
-                                    <div className="mb-8 flex justify-between">
-                                        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border-2 rounded-lg px-4 py-2" />
-                                        <button onClick={() => setShowBatch(true)} className="bg-blue-500 text-white px-6 py-3 rounded-lg">➕ 添加题目</button>
-                                    </div>
-                                    {due.length === 0 ? (
-                                        <div className="text-center py-20"><div className="text-6xl mb-4">🎉</div><p className="text-2xl">今天没有需要复习的题目！</p></div>
-                                    ) : (
-                                        <table className="w-full">
-                                            <thead className="bg-gray-50">
-                                                <tr>
-                                                    <th className="px-4 py-3 text-left">✅</th>
-                                                    <th className="px-4 py-3 text-left">🌟</th>
-                                                    <th className="px-4 py-3 text-left">题号</th>
-                                                    <th className="px-4 py-3 text-left">名称</th>
-                                                    <th className="px-4 py-3 text-left">评分</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {due.map((c, i) => {
-                                                    const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
-                                                    return (
-                                                        <tr key={i} className={done.has(c.card_id) ? 'bg-green-50' : 'hover:bg-blue-50'}>
-                                                            <td className="px-4 py-3">{done.has(c.card_id) && '✓'}</td>
-                                                            <td className="px-4 py-3">{'⭐'.repeat(s)}</td>
-                                                            <td className="px-4 py-3 font-bold">{c.card_id}</td>
-                                                            <td className="px-4 py-3">{c.name || '-'}</td>
-                                                            <td className="px-4 py-3">
-                                                                <div className="flex space-x-2">
-                                                                    {[1, 2, 3, 4, 5].map(n => (
-                                                                        <button key={n} onClick={() => review(c.card_id, n)} disabled={done.has(c.card_id)} className={`w-10 h-10 border-2 rounded font-bold ${done.has(c.card_id) ? 'bg-gray-100 text-gray-400' : 'hover:bg-blue-500 hover:text-white'}`}>{n}</button>
-                                                                    ))}
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    )}
-                                </div>
+                                <TodayView date={date} setDate={setDate} due={due} done={done} review={review} setShowBatch={setShowBatch} update={update} />
                             ) : (
                                 <Library cards={current} total={filtered.length} page={page} setPage={setPage} totalPages={totalPages} setShowAdd={setShowAdd} update={update} del={del} search={search} setSearch={setSearch} filterTags={filterTags} setFilterTags={setFilterTags} filterProf={filterProf} setFilterProf={setFilterProf} dateStart={dateStart} setDateStart={setDateStart} dateEnd={dateEnd} setDateEnd={setDateEnd} tags={tags} setCurr={setCurr} setShowNote={setShowNote} setShowHist={setShowHist} />
                             )}
@@ -284,14 +306,56 @@
                     </div>
 
                     {showAdd && <AddModal date={date} setDate={setDate} onAdd={add} onClose={() => setShowAdd(false)} />}
-                    {showBatch && <BatchModal date={date} setDate={setDate} onAdd={async (items) => {
-                        for (const item of items) await add(item.id, '', item.score, []);
-                        load();
-                        setShowBatch(false);
-                    }} onClose={() => setShowBatch(false)} />}
-                    {showNote && curr && <NoteEditor card={curr} token={token} onSave={(note) => { update(curr.card_id, { note }); setShowNote(false); setCurr(null); }} onClose={() => { setShowNote(false); setCurr(null); }} />}
+                    {showBatch && <BatchModal date={date} setDate={setDate} onAdd={batchAdd} onClose={() => setShowBatch(false)} />}
+                    {showNote && curr && <NoteEditor card={curr} token={token} onSave={(note) => { update(curr.card_id, { note }); setShowNote(false); setCurr(null); setMsg('✅ 备注保存成功'); setTimeout(() => setMsg(''), 2000); }} onClose={() => { setShowNote(false); setCurr(null); }} />}
                     {showHist && curr && <HistModal card={curr} onClose={() => { setShowHist(false); setCurr(null); }} />}
                 </div>
+            );
+        }
+
+        function TodayView({ date, setDate, due, done, review, setShowBatch, update }) {
+            return (
+                <>
+                    <div className="mb-8 flex justify-between">
+                        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border-2 rounded-lg px-4 py-2" />
+                        <button onClick={() => setShowBatch(true)} className="bg-blue-500 text-white px-6 py-3 rounded-lg">➕ 添加题目</button>
+                    </div>
+                    {due.length === 0 ? (
+                        <div className="text-center py-20"><div className="text-6xl mb-4">🎉</div><p className="text-2xl">今天没有需要复习的题目！</p></div>
+                    ) : (
+                        <table className="w-full">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left">✅</th>
+                                    <th className="px-4 py-3 text-left">🌟</th>
+                                    <th className="px-4 py-3 text-left">题号</th>
+                                    <th className="px-4 py-3 text-left">名称</th>
+                                    <th className="px-4 py-3 text-left">评分</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {due.map((c, i) => {
+                                    const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
+                                    return (
+                                        <tr key={i} className={done.has(c.card_id) ? 'bg-green-50' : 'hover:bg-blue-50'}>
+                                            <td className="px-4 py-3">{done.has(c.card_id) && '✓'}</td>
+                                            <td className="px-4 py-3">{'⭐'.repeat(s)}</td>
+                                            <td className="px-4 py-3 font-bold">{c.card_id}</td>
+                                            <td className="px-4 py-3"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} /></td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex space-x-2">
+                                                    {[1, 2, 3, 4, 5].map(n => (
+                                                        <button key={n} onClick={() => review(c.card_id, n)} disabled={done.has(c.card_id)} className={`w-10 h-10 border-2 rounded font-bold ${done.has(c.card_id) ? 'bg-gray-100 text-gray-400' : 'hover:bg-blue-500 hover:text-white'}`}>{n}</button>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )}
+                </>
             );
         }
 
@@ -303,7 +367,7 @@
                 <>
                     <div className="mb-6 bg-gray-50 border-2 rounded-xl p-6 pb-20 relative">
                         <div className="grid grid-cols-4 gap-4">
-                            <div><label className="block text-sm mb-2">🔍 题号</label><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full border-2 rounded px-4 py-2" /></div>
+                            <div><label className="block text-sm mb-2">🔍 题号</label><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full border-2 rounded px-4 py-2" placeholder="搜索..." /></div>
                             <div className="relative">
                                 <label className="block text-sm mb-2">🏷️ 标签</label>
                                 <button onClick={() => setShowTags(!showTags)} className="w-full border-2 rounded px-4 py-2 bg-white flex justify-between">
@@ -365,9 +429,7 @@
                                         <tr key={i} className="border-t hover:bg-blue-50">
                                             <td className="px-4 py-3">{'⭐'.repeat(s)}</td>
                                             <td className="px-4 py-3 font-bold">{c.card_id}</td>
-                                            <td className="px-4 py-3 max-w-xs truncate">
-                                                <EditField val={c.name} save={(v) => update(c.card_id, { name: v })} />
-                                            </td>
+                                            <td className="px-4 py-3 max-w-xs truncate"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} /></td>
                                             <td className="px-4 py-3"><Tags tags={c.tags || []} save={(t) => update(c.card_id, { tags: t })} /></td>
                                             <td className="px-4 py-3 text-sm text-gray-600">{c.first_date}</td>
                                             <td className="px-4 py-3 text-sm text-gray-600">{c.next_review || '-'}</td>
@@ -390,11 +452,11 @@
 
                     {totalPages > 1 && (
                         <div className="flex justify-center space-x-2">
-                            <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1} className="px-4 py-2 border-2 rounded">←</button>
+                            <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1} className={`px-4 py-2 border-2 rounded ${page === 1 ? 'opacity-50 cursor-not-allowed' : ''}`}>←</button>
                             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(p => (
                                 <button key={p} onClick={() => setPage(p)} className={`px-4 py-2 rounded ${page === p ? 'bg-blue-500 text-white' : 'border-2'}`}>{p}</button>
                             ))}
-                            <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages} className="px-4 py-2 border-2 rounded">→</button>
+                            <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages} className={`px-4 py-2 border-2 rounded ${page === totalPages ? 'opacity-50 cursor-not-allowed' : ''}`}>→</button>
                         </div>
                     )}
                 </>
@@ -419,44 +481,134 @@
             );
         }
 
+
         function AddModal({ date, setDate, onAdd, onClose }) {
             const [id, setId] = useState('');
             const [name, setName] = useState('');
             const [score, setScore] = useState(3);
             const [tags, setTags] = useState([]);
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
 
-            return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl p-8 w-96">
-                        <h3 className="text-2xl font-bold mb-6">添加题目</h3>
-                        <div className="space-y-4">
-                            <input type="text" value={id} onChange={(e) => setId(e.target.value)} placeholder="题号" className="w-full border-2 rounded px-4 py-3" />
-                            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="名称" className="w-full border-2 rounded px-4 py-3" />
-                            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border-2 rounded px-4 py-3" />
-                            <div className="flex space-x-2">
-                                {[0, 1, 2, 3, 4, 5].map(s => <button key={s} onClick={() => setScore(s)} className={`flex-1 py-3 rounded font-bold ${score === s ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>{s}</button>)}
+            const submit = async () => {
+                if (!id.trim()) {
+                    setError('请输入题号');
+                    return;
+                }
+
+                setError('');
+                setLoading(true);
+
+                // ⭐ 关键修改：接收返回值
+                const result = await onAdd(id, name, score, tags);
+
+                setLoading(false);
+
+                // ⭐ 关键修改：根据返回值处理
+                if (result.success) {
+                    onClose();
+                } else {
+                    setError(result.error || '添加失败');
+                }
+            };
+
+            // 后面代码不变...
+        }
+
+        return (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-2xl p-8 w-96">
+                    <h3 className="text-2xl font-bold mb-6">添加题目</h3>
+                    <div className="space-y-4">
+                        <input
+                            type="text"
+                            value={id}
+                            onChange={(e) => { setId(e.target.value); setError(''); }}
+                            placeholder="题号"
+                            className="w-full border-2 rounded px-4 py-3"
+                        />
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="名称"
+                            className="w-full border-2 rounded px-4 py-3"
+                        />
+                        <input
+                            type="date"
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                            className="w-full border-2 rounded px-4 py-3"
+                        />
+                        <div className="flex space-x-2">
+                            {[0, 1, 2, 3, 4, 5].map(s =>
+                                <button
+                                    key={s}
+                                    type="button"
+                                    onClick={() => setScore(s)}
+                                    className={`flex-1 py-3 rounded font-bold ${score === s ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}
+                                >
+                                    {s}
+                                </button>
+                            )}
+                        </div>
+
+                        {error && (
+                            <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded">
+                                <p className="text-red-700 text-sm">{error}</p>
                             </div>
-                            <div className="flex space-x-3">
-                                <button onClick={onClose} className="flex-1 border-2 rounded px-6 py-3">取消</button>
-                                <button onClick={async () => { if (await onAdd(id, name, score, tags)) onClose(); }} className="flex-1 bg-blue-500 text-white rounded px-6 py-3">完成</button>
-                            </div>
+                        )}
+
+                        <div className="flex space-x-3">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 border-2 rounded px-6 py-3"
+                                disabled={loading}
+                            >
+                                取消
+                            </button>
+                            <button
+                                type="button"
+                                onClick={submit}
+                                className="flex-1 bg-blue-500 text-white rounded px-6 py-3 disabled:opacity-50"
+                                disabled={loading}
+                            >
+                                {loading ? '添加中...' : '完成'}
+                            </button>
                         </div>
                     </div>
                 </div>
-            );
+            </div>
+        );
         }
+
+
+
 
         function BatchModal({ date, setDate, onAdd, onClose }) {
             const [text, setText] = useState('');
+
+            const submit = async () => {
+                const items = text.split('\n').filter(l => l.trim()).map(l => {
+                    const [id, s] = l.split(':');
+                    return { card_id: id.trim(), score: parseInt(s) || 3 };
+                });
+
+                if (items.length > 0 && await onAdd(items)) {
+                    onClose();
+                }
+            };
+
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-2xl p-8 w-[700px]">
                         <h3 className="text-2xl font-bold mb-6">批量添加</h3>
                         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mb-4 border-2 rounded px-4 py-2" />
-                        <textarea value={text} onChange={(e) => setText(e.target.value)} className="w-full border-2 rounded px-4 py-3 h-64 font-mono" placeholder="201:4&#10;202:3" />
+                        <textarea value={text} onChange={(e) => setText(e.target.value)} className="w-full border-2 rounded px-4 py-3 h-64 font-mono" placeholder="格式：题号:评分&#10;201:4&#10;202:3&#10;203:5" />
                         <div className="flex space-x-3 mt-4">
                             <button onClick={onClose} className="flex-1 border-2 rounded px-6 py-3">取消</button>
-                            <button onClick={() => { const items = text.split('\n').filter(l => l.trim()).map(l => { const [id, s] = l.split(':'); return { id: id.trim(), score: parseInt(s) || 3 }; }); onAdd(items); }} className="flex-1 bg-blue-500 text-white rounded px-6 py-3">完成</button>
+                            <button onClick={submit} className="flex-1 bg-blue-500 text-white rounded px-6 py-3">完成</button>
                         </div>
                     </div>
                 </div>
@@ -483,7 +635,11 @@
 
             const init = () => {
                 if (q.current || !ref.current) return;
-                const quill = new window.Quill(ref.current, { theme: 'snow', modules: { toolbar: [['bold', 'italic'], ['code-block'], ['image']] }, placeholder: '输入备注...' });
+                const quill = new window.Quill(ref.current, {
+                    theme: 'snow',
+                    modules: { toolbar: [['bold', 'italic'], ['code-block'], ['image']] },
+                    placeholder: '输入备注...'
+                });
                 if (card.note) quill.root.innerHTML = card.note;
                 quill.on('text-change', () => setContent(quill.root.innerHTML));
                 quill.getModule('toolbar').addHandler('image', () => {
@@ -497,15 +653,40 @@
                             const fd = new FormData();
                             fd.append('file', file);
                             fd.append('card_id', card.card_id);
-                            fetch(`${API}/upload`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: fd }).then(r => r.json()).then(d => {
+                            fetch(`${API}/upload`, {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                body: fd
+                            }).then(r => r.json()).then(d => {
                                 const range = quill.getSelection(true);
-
-                                quill.insertEmbed(range.index, 'image', `${API_ORIGIN}/images/${d.filename}`);
-
-                            });
+                                quill.insertEmbed(range.index, 'image', `${API_ORIGIN}/api/images/${d.filename}`);
+                            }).catch(e => alert('图片上传失败'));
                         }
                     };
                 });
+
+                // 粘贴图片
+                quill.root.addEventListener('paste', (e) => {
+                    const items = e.clipboardData.items;
+                    for (let item of items) {
+                        if (item.type.indexOf('image') !== -1) {
+                            e.preventDefault();
+                            const file = item.getAsFile();
+                            const fd = new FormData();
+                            fd.append('file', file);
+                            fd.append('card_id', card.card_id);
+                            fetch(`${API}/upload`, {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                body: fd
+                            }).then(r => r.json()).then(d => {
+                                const range = quill.getSelection(true);
+                                quill.insertEmbed(range.index, 'image', `${API_ORIGIN}/api/images/${d.filename}`);
+                            }).catch(e => alert('图片上传失败'));
+                        }
+                    }
+                });
+
                 q.current = quill;
             };
 
@@ -536,8 +717,8 @@
                         </div>
                         <div className="space-y-2 text-sm">
                             <div>首次完成：{card.first_date}</div>
-                            <div>复习次数：{card.review_count} 次</div>
-                            <div>间隔天数：{card.interval} 天</div>
+                            <div>复习次数：{card.review_count || 0} 次</div>
+                            <div>间隔天数：{card.interval || 0} 天</div>
                             <div>下次复习：{card.next_review || '-'}</div>
                         </div>
                         <button onClick={onClose} className="w-full mt-6 py-2 bg-gray-100 rounded">关闭</button>

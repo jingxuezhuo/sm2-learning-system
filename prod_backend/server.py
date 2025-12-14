@@ -204,6 +204,68 @@ def get_due_cards():
 def add_card_api():
     user_id = request.user_id
     data = request.json or {}
+
+    card_id = data.get('card_id')
+    first_date = data.get('first_date')
+    score = data.get('score')
+    name = data.get('name', '')
+    tags = data.get('tags', [])
+
+    # 参数校验
+    if not card_id or not first_date or score is None:
+        return jsonify({'error': '缺少必要参数'}), 400
+
+    if not (0 <= score <= 5):
+        return jsonify({'error': '评分必须在0-5之间'}), 400
+
+    # ✅ 重复：用 409 Conflict（更标准）
+    if get_card(user_id, card_id):
+        return jsonify({'error': '卡片已存在'}), 409
+
+    # 日期校验
+    try:
+        review_date = datetime.strptime(first_date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': '日期格式错误'}), 400
+
+    # 生成卡片
+    card = SM2Card(card_id, first_date)
+    card.name = name
+    card.tags = tags
+    card.review(score, review_date)
+
+    card_data = {
+        'card_id': card.card_id,
+        'name': card.name,
+        'first_date': card.first_date,
+        'ef': card.ef,
+        'n': card.n,
+        'interval': card.interval,
+        'next_review': card.next_review.strftime('%Y-%m-%d') if card.next_review else None,
+        'review_count': card.review_count,
+        'tags': card.tags,
+        'note': '',
+        'images': []
+    }
+
+    # ✅ 关键：写库包 try/except，保证永远返回 JSON（避免前端 res.json() 崩）
+    try:
+        add_card(user_id, card_data)
+    except Exception as e:
+        return jsonify({'error': f'写入失败: {str(e)}'}), 500
+
+    return jsonify({
+        'message': '添加成功',
+        'card': {
+            'card_id': card.card_id,
+            'name': card.name,
+            'next_review': card.next_review.strftime('%Y-%m-%d') if card.next_review else None
+        }
+    }), 201
+
+
+    user_id = request.user_id
+    data = request.json or {}
     
     card_id = data.get('card_id')
     first_date = data.get('first_date')
@@ -218,7 +280,7 @@ def add_card_api():
         return jsonify({'error': '评分必须在0-5之间'}), 400
     
     if get_card(user_id, card_id):
-        return jsonify({'error': '卡片已存在'}), 400
+        return jsonify({'error': '卡片已存在'}), 409
     
     try:
         review_date = datetime.strptime(first_date, '%Y-%m-%d')

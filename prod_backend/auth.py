@@ -4,6 +4,10 @@ import os
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import request, jsonify
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
