@@ -632,9 +632,9 @@
                                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border-2 rounded px-4 py-3" />
                             </div>
                             <div>
-                                <label className="block text-sm mb-2 font-medium">Rating (0-5)</label>
+                                <label className="block text-sm mb-2 font-medium">Rating (1-5)</label>
                                 <div className="flex space-x-2">
-                                    {[0, 1, 2, 3, 4, 5].map(s => <button key={s} type="button" onClick={() => setScore(s)} className={`flex-1 py-3 rounded font-bold ${score === s ? 'primary-btn text-white' : 'bg-gray-100'}`}>{s}</button>)}
+                                    {[1, 2, 3, 4, 5].map(s => <button key={s} type="button" onClick={() => setScore(s)} className={`flex-1 py-3 rounded font-bold ${score === s ? 'primary-btn text-white' : 'bg-gray-100'}`}>{s}</button>)}
                                 </div>
                             </div>
                             {error && <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded"><p className="text-red-700 text-sm">{error}</p></div>}
