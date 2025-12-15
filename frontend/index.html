@@ -200,7 +200,12 @@
                         setDone(prev => new Set([...prev, id]));
                         setMsg('Review successful');
                         setTimeout(() => setMsg(''), 2000);
-                        load();
+                        // 只重新加载统计数据，不重新加载due列表
+                        const r1 = await api('/stats');
+                        if (r1.ok) {
+                            const d1 = await r1.json();
+                            setStats(d1);
+                        }
                     }
                 } catch (e) {
                     setMsg('Review failed');
