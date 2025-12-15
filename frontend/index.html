@@ -378,7 +378,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {due.map((c, i) => {
+                                {sortedDue.map((c, i) => {
                                     const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
                                     const isDone = done.has(c.card_id);
                                     return (
