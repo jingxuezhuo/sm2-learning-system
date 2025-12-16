@@ -378,6 +378,7 @@
                                     <th className="px-4 py-3 text-left font-semibold">ID</th>
                                     <th className="px-4 py-3 text-left font-semibold">Name</th>
                                     <th className="px-4 py-3 text-left font-semibold">Tags</th>
+                                    <th className="px-4 py-3 text-left font-semibold">Link</th>
                                     <th className="px-4 py-3 text-left font-semibold">Rating</th>
                                     <th className="px-4 py-3 text-left font-semibold">Review Count</th>
                                 </tr>
@@ -393,6 +394,9 @@
                                             <td className="px-4 py-3 font-bold">{c.card_id}</td>
                                             <td className="px-4 py-3"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} placeholder="Add name" /></td>
                                             <td className="px-4 py-3"><Tags tags={c.tags || []} save={(t) => update(c.card_id, { tags: t })} /></td>
+                                            <td className="px-4 py-3">
+                                                {c.link ? <a href={c.link} target="_blank" className="primary-text text-sm hover:underline">Open</a> : <span className="text-gray-400 text-sm">-</span>}
+                                            </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex space-x-2">
                                                     {[1, 2, 3, 4, 5].map(n => (
