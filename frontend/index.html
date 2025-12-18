@@ -360,7 +360,7 @@
                         </div>
                     </div>
 
-                    {showAdd && <AddModal date={date} setDate={setDate} onAdd={add} onClose={() => setShowAdd(false)} />}
+                    {showAdd && <AddModal date={date} setDate={setDate} onAdd={add} onClose={() => setShowAdd(false)} allTags={tags} />}
                     {showBatch && <BatchModal date={date} setDate={setDate} onAdd={batchAdd} onClose={() => setShowBatch(false)} />}
                     {showNote && curr && <NoteEditor card={curr} token={token} onSave={(note) => { update(curr.card_id, { note }); setShowNote(false); setCurr(null); setMsg('Note saved'); setTimeout(() => setMsg(''), 2000); }} onClose={() => { setShowNote(false); setCurr(null); }} />}
                     {showHist && curr && <HistModal card={curr} onClose={() => { setShowHist(false); setCurr(null); }} />}
@@ -592,7 +592,94 @@
             );
         }
 
-        function AddModal({ date, setDate, onAdd, onClose }) {
+
+        // ========== 新增组件：在第 630 行左右，AddModal 函数之前添加 ==========
+        function TagsInput({ tags, setTags, allTags }) {
+            const [showDropdown, setShowDropdown] = useState(false);
+            const [newTag, setNewTag] = useState('');
+            const [showNewInput, setShowNewInput] = useState(false);
+
+            const removeTag = (tagToRemove) => {
+                setTags(tags.filter(t => t !== tagToRemove));
+            };
+
+            const addExistingTag = (tag) => {
+                if (!tags.includes(tag)) {
+                    setTags([...tags, tag]);
+                }
+                setShowDropdown(false);
+            };
+
+            const addNewTag = () => {
+                if (newTag.trim() && !tags.includes(newTag.trim())) {
+                    setTags([...tags, newTag.trim()]);
+                    setNewTag('');
+                    setShowNewInput(false);
+                }
+            };
+
+            return (
+                <div className="relative">
+                    <div className="min-h-[44px] border-2 rounded px-4 py-2 flex flex-wrap gap-2 items-center">
+                        {tags.map(t => (
+                            <span key={t} className="px-3 py-1 rounded-full text-sm" style={{ backgroundColor: '#E8EFFD', color: '#306AE7' }}>
+                                {t}
+                                <button type="button" onClick={() => removeTag(t)} className="ml-2 hover:text-red-600">×</button>
+                            </span>
+                        ))}
+
+                        {showNewInput ? (
+                            <input
+                                type="text"
+                                value={newTag}
+                                onChange={(e) => setNewTag(e.target.value)}
+                                onBlur={() => { if (newTag.trim()) addNewTag(); else setShowNewInput(false); }}
+                                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addNewTag())}
+                                className="border rounded px-2 py-1 text-sm w-32"
+                                placeholder="New tag..."
+                                autoFocus
+                            />
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setShowDropdown(!showDropdown)}
+                                className="primary-text text-sm hover:underline"
+                            >
+                                + Add Tag
+                            </button>
+                        )}
+                    </div>
+
+                    {showDropdown && (
+                        <div className="absolute z-30 mt-1 w-full bg-white border-2 rounded shadow-lg max-h-48 overflow-y-auto">
+                            <button
+                                type="button"
+                                onClick={() => { setShowDropdown(false); setShowNewInput(true); }}
+                                className="block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm primary-text border-b"
+                            >
+                                + Create New Tag
+                            </button>
+                            {allTags && allTags.length > 0 ? (
+                                allTags.filter(t => !tags.includes(t)).map(t => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => addExistingTag(t)}
+                                        className="block w-full text-left px-4 py-2 hover:bg-blue-50 text-sm"
+                                    >
+                                        {t}
+                                    </button>
+                                ))
+                            ) : (
+                                <div className="px-4 py-2 text-gray-400 text-sm">No existing tags</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function AddModal({ date, setDate, onAdd, onClose, allTags }) {  // ← 添加 allTags 参数
             const [id, setId] = useState('');
             const [name, setName] = useState('');
             const [score, setScore] = useState(3);
@@ -628,7 +715,7 @@
 
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl p-8 w-[500px]">
+                    <div className="bg-white rounded-2xl p-8 w-[500px] max-h-[90vh] overflow-y-auto">  {/* ← 添加最大高度和滚动 */}
                         <h3 className="text-2xl font-bold mb-6">Add New Card</h3>
                         <div className="space-y-4">
                             <div>
@@ -648,6 +735,12 @@
                                 <label className="block text-sm mb-2 font-medium">Completion Date</label>
                                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full border-2 rounded px-4 py-3" />
                             </div>
+                            {/* ========== 新增 Tags 部分 ========== */}
+                            <div>
+                                <label className="block text-sm mb-2 font-medium">Tags (Optional)</label>
+                                <TagsInput tags={tags} setTags={setTags} allTags={allTags} />
+                            </div>
+                            {/* ================================== */}
                             <div>
                                 <label className="block text-sm mb-2 font-medium">Rating (1-5)</label>
                                 <div className="flex space-x-2">
