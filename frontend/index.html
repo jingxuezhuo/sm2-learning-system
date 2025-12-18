@@ -190,6 +190,14 @@
                 }
                 if (dateStart) f = f.filter(c => c.first_date >= dateStart);
                 if (dateEnd) f = f.filter(c => c.first_date <= dateEnd);
+
+                // 按添加日期降序排序（最新的在前面）
+                f.sort((a, b) => {
+                    const dateA = new Date(a.first_date);
+                    const dateB = new Date(b.first_date);
+                    return dateB - dateA; // 降序：新的在前
+                });
+
                 setFiltered(f);
             };
 
