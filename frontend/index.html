@@ -742,7 +742,21 @@
                             </div>
                             {/* ================================== */}
                             <div>
-                                <label className="block text-sm mb-2 font-medium">Rating (1-5)</label>
+                                <div className="flex items-center mb-2">
+                                    <label className="text-sm font-medium">Rating (1-5)</label>
+                                    <div className="relative ml-2 group">
+                                        <span className="w-5 h-5 rounded-full border-2 border-gray-400 flex items-center justify-center text-gray-500 text-xs cursor-help">?</span>
+                                        <div className="absolute left-0 top-7 w-64 bg-gray-800 text-white text-xs rounded-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 shadow-lg">
+                                            <div className="space-y-1">
+                                                <div><strong>1-Star:</strong> Unfamiliar</div>
+                                                <div><strong>2-Star:</strong> Slightly Unfamiliar</div>
+                                                <div><strong>3-Star:</strong> Moderately Familiar</div>
+                                                <div><strong>4-Star:</strong> Quite Familiar</div>
+                                                <div><strong>5-Star:</strong> Very Familiar</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div className="flex space-x-2">
                                     {[1, 2, 3, 4, 5].map(s => <button key={s} type="button" onClick={() => setScore(s)} className={`flex-1 py-3 rounded font-bold ${score === s ? 'primary-btn text-white' : 'bg-gray-100'}`}>{s}</button>)}
                                 </div>
