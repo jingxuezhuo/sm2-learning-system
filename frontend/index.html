@@ -532,7 +532,6 @@
             const filterCards = () => {
                 let result = [...cards];
 
-                // 过滤掉已掌握的题目 (近3个月不需要复习)
                 const threeMonthsLater = new Date();
                 threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
                 const masteredThreshold = threeMonthsLater.toISOString().split('T')[0];
@@ -541,7 +540,6 @@
                 if (filterMode === 'most-reviewed') {
                     result.sort((a, b) => (b.review_count || 0) - (a.review_count || 0));
                 } else if (filterMode === 'mastered') {
-                    // 已掌握题目单独筛选
                     const allMastered = cards.filter(c => c.next_review && c.next_review >= masteredThreshold);
                     result = allMastered;
                 }
@@ -590,7 +588,6 @@
                 const year = today.getFullYear();
                 const startDate = new Date(year, 0, 1);
 
-                // 找到第一个周日作为起始点
                 const firstDay = startDate.getDay();
                 const adjustedStart = new Date(startDate);
                 if (firstDay !== 0) {
@@ -601,7 +598,6 @@
                 let currentDate = new Date(adjustedStart);
                 const endDate = new Date(year, 11, 31);
 
-                // 生成完整的周期 (从调整后的开始日期到年底)
                 while (currentDate <= endDate || currentDate.getDay() !== 0) {
                     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
                     const count = activities[dateStr] || 0;
@@ -634,7 +630,6 @@
                 return '#0d4429';
             };
 
-            // 按周分组,并添加月份间隔
             const weeks = [];
             let currentWeek = [];
             let lastMonth = -1;
@@ -645,7 +640,6 @@
                     currentWeek = [];
                 }
 
-                // 检测月份变化
                 if (day.month !== lastMonth && currentWeek.length > 0 && day.day !== 0) {
                     weeks.push({ days: currentWeek, monthBreak: true });
                     currentWeek = [];
