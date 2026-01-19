@@ -133,11 +133,8 @@
             const [stats, setStats] = useState({ total_cards: 0, due_today: 0 });
             const [todayNewCards, setTodayNewCards] = useState(0);
             const [msg, setMsg] = useState('');
-            const [done, setDone] = useState(() => {
-                const today = getLocalDate();
-                const saved = localStorage.getItem(`done_${today}`);
-                return saved ? new Set(JSON.parse(saved)) : new Set();
-            });
+            const [done, setDone] = useState(new Set());
+
             const [tags, setTags] = useState([]);
             const [search, setSearch] = useState('');
             const [filterTags, setFilterTags] = useState([]);
@@ -162,15 +159,21 @@
             }, [tab, date]);
 
             useEffect(() => {
+                if (tab !== 'today') return;
+                const saved = localStorage.getItem(`done_${date}`);
+                setDone(saved ? new Set(JSON.parse(saved)) : new Set());
+            }, [tab, date]);
+
+
+
+
+            useEffect(() => {
                 filter();
             }, [cards, search, filterTags, filterProf, dateStart, dateEnd]);
 
             const load = async () => {
                 try {
-                    if (tab === 'today') {
-                        const savedDone = localStorage.getItem(`done_${date}`);
-                        setDone(savedDone ? new Set(JSON.parse(savedDone)) : new Set());
-                    }
+
 
                     const r1 = await api('/stats');
                     if (r1.ok) {
@@ -539,9 +542,6 @@
 
                 if (filterMode === 'most-reviewed') {
                     result.sort((a, b) => (b.review_count || 0) - (a.review_count || 0));
-                } else if (filterMode === 'mastered') {
-                    const allMastered = cards.filter(c => c.next_review && c.next_review >= masteredThreshold);
-                    result = allMastered;
                 }
 
                 setFilteredCards(result);
@@ -556,10 +556,7 @@
             }).length;
             const totalReviews = cards.reduce((sum, c) => sum + (c.review_count || 0), 0);
 
-            const threeMonthsLater = new Date();
-            threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
-            const threshold = threeMonthsLater.toISOString().split('T')[0];
-            const masteredCards = cards.filter(c => c.next_review && c.next_review >= threshold).length;
+
 
             const start = (page - 1) * perPage;
             const currentCards = filteredCards.slice(start, start + perPage);
@@ -657,19 +654,14 @@
 
             return (
                 <div>
-                    <div className="grid grid-cols-3 gap-6 mb-8">
+                    <div className="grid grid-cols-2 gap-6 mb-8">
                         <div className="bg-white border-2 rounded-xl p-6 text-center shadow-sm">
                             <div className="text-4xl font-bold text-blue-600 mb-2">{totalCards}</div>
-                            <div className="text-sm text-gray-500">一共刷了{totalCards}个题目</div>
+                            <div className="text-sm text-gray-500">Total Questions Sloved: {totalCards}</div>
                         </div>
                         <div className="bg-white border-2 rounded-xl p-6 text-center shadow-sm">
                             <div className="text-4xl font-bold text-purple-600 mb-2">{totalReviews}</div>
-                            <div className="text-sm text-gray-500">一共复习了{totalReviews}次</div>
-                        </div>
-                        <div className="bg-white border-2 rounded-xl p-6 text-center shadow-sm">
-                            <div className="text-4xl font-bold text-green-600 mb-2">{masteredCards}</div>
-                            <div className="text-sm text-gray-500">已经掌握了{masteredCards}道题目</div>
-                            <div className="text-xs text-gray-400 mt-1">(不在统计中显示)</div>
+                            <div className="text-sm text-gray-500">Total Reviews: {totalReviews}</div>
                         </div>
                     </div>
 
@@ -693,7 +685,6 @@
 
                     <div className="flex space-x-4 mb-6">
                         <button onClick={() => setFilterMode('most-reviewed')} className={`px-6 py-3 rounded-lg font-medium border-2 ${filterMode === 'most-reviewed' ? 'primary-bg text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>复习次数从大到小排序</button>
-                        <button onClick={() => setFilterMode('mastered')} className={`px-6 py-3 rounded-lg font-medium border-2 ${filterMode === 'mastered' ? 'primary-bg text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>已掌握题目 ({masteredCards})</button>
                     </div>
 
                     <div className="mb-4 text-sm text-gray-600">Total: <span className="font-bold primary-text">{filteredCards.length}</span> cards</div>
