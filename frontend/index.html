@@ -119,11 +119,19 @@
         }
 
         function Main({ user, token, onLogout }) {
-            const [tab, setTab] = useState('Cards-Lists');
+            const getLocalDate = () => {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            const [tab, setTab] = useState('cards-list');
             const [cards, setCards] = useState([]);
             const [filtered, setFiltered] = useState([]);
             const [due, setDue] = useState([]);
-            const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+            const [date, setDate] = useState(getLocalDate());
             const [stats, setStats] = useState({ total_cards: 0, due_today: 0 });
             const [todayNewCards, setTodayNewCards] = useState(0);
             const [msg, setMsg] = useState('');
@@ -182,8 +190,8 @@
                             setCards(d4.cards || []);
 
                             // ========== 添加这部分 ========== 
-                            // 计算今天新增的卡片数量
-                            const today = new Date().toISOString().split('T')[0];
+                            // 计算今天新增的卡片数量 (使用本地时间)
+                            const today = getLocalDate();
                             const newToday = d4.cards.filter(c => c.first_date === today).length;
                             setTodayNewCards(newToday);
                             // ================================
@@ -382,7 +390,7 @@
 
                         <div className="bg-white rounded-b-xl shadow-lg p-8">
                             {tab === 'today' ? (
-                                <TodayView date={date} setDate={setDate} due={sortedDue} done={done} review={review} setShowBatch={setShowBatch} update={update} />
+                                <TodayView date={date} setDate={setDate} due={sortedDue} done={done} review={review} setShowBatch={setShowBatch} update={update} setCurr={setCurr} setShowNote={setShowNote} />
                             ) : (
                                 <Library cards={current} total={filtered.length} page={page} setPage={setPage} totalPages={totalPages} setShowAdd={setShowAdd} update={update} del={del} search={search} setSearch={setSearch} filterTags={filterTags} setFilterTags={setFilterTags} filterProf={filterProf} setFilterProf={setFilterProf} dateStart={dateStart} setDateStart={setDateStart} dateEnd={dateEnd} setDateEnd={setDateEnd} tags={tags} allTags={tags} setCurr={setCurr} setShowNote={setShowNote} setShowHist={setShowHist} />
                             )}
@@ -397,56 +405,113 @@
             );
         }
 
-        function TodayView({ date, setDate, due, done, review, setShowBatch, update }) {
+        function TodayView({ date, setDate, due, done, review, setShowBatch, update, setCurr, setShowNote }) {
+            // 分离待复习和已完成的卡片
+            const pendingCards = due.filter(c => !done.has(c.card_id));
+            const completedCards = due.filter(c => done.has(c.card_id));
             return (
                 <>
                     <div className="mb-8 flex justify-between">
                         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border-2 rounded-lg px-4 py-2" />
                         <button onClick={() => setShowBatch(true)} className="primary-btn text-white px-6 py-3 rounded-lg">+ Add Card</button>
                     </div>
-                    {due.length === 0 ? (
+
+                    {/* 第一块: 待复习的卡片 */}
+                    {pendingCards.length === 0 && completedCards.length === 0 ? (
                         <div className="text-center py-20"><div className="text-6xl mb-4">🎉</div><p className="text-2xl text-gray-600">No cards to review today!</p></div>
                     ) : (
-                        <table className="w-full">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-4 py-3 text-left font-semibold">Done</th>
-                                    <th className="px-4 py-3 text-left font-semibold">Stars</th>
-                                    <th className="px-4 py-3 text-left font-semibold">ID</th>
-                                    <th className="px-4 py-3 text-left font-semibold">Name</th>
-                                    <th className="px-4 py-3 text-left font-semibold">Tags</th>
-                                    <th className="px-4 py-3 text-left font-semibold">Link</th>
-                                    <th className="px-4 py-3 text-left font-semibold">Rating</th>
-                                    <th className="px-4 py-3 text-left font-semibold">Review Count</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {due.map((c, i) => {
-                                    const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
-                                    const isDone = done.has(c.card_id);
-                                    return (
-                                        <tr key={i} className={isDone ? 'bg-green-50 opacity-70' : 'hover:bg-blue-50'}>
-                                            <td className="px-4 py-3">{isDone && <span className="text-green-600 text-xl">✓</span>}</td>
-                                            <td className="px-4 py-3 text-sm">{'⭐'.repeat(s)}</td>
-                                            <td className="px-4 py-3 font-bold">{c.card_id}</td>
-                                            <td className="px-4 py-3 name-cell"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} placeholder="Add name" /></td>
-                                            <td className="px-4 py-3"><Tags tags={c.tags || []} save={(t) => update(c.card_id, { tags: t })} /></td>
-                                            <td className="px-4 py-3">
-                                                {c.link ? <a href={c.link} target="_blank" className="primary-text text-sm hover:underline">Open</a> : <span className="text-gray-400 text-sm">-</span>}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex space-x-2">
-                                                    {[1, 2, 3, 4, 5].map(n => (
-                                                        <button key={n} onClick={() => review(c.card_id, n)} disabled={isDone} className={`w-10 h-10 border-2 rounded font-bold ${isDone ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'hover:text-white'}`} style={isDone ? {} : { borderColor: '#306AE7' }} onMouseEnter={(e) => !isDone && (e.target.style.backgroundColor = '#306AE7')} onMouseLeave={(e) => !isDone && (e.target.style.backgroundColor = 'white')}>{n}</button>
-                                                    ))}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-gray-600">{c.review_count || 0} times</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                        <>
+                            {pendingCards.length > 0 && (
+                                <div className="mb-12">
+                                    <h3 className="text-xl font-bold mb-4 primary-text">Ready for Review ({date})</h3>
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left font-semibold">Done</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Stars</th>
+                                                <th className="px-4 py-3 text-left font-semibold">ID</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Name</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Tags</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Link</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Rating</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Review Count</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Note</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {pendingCards.map((c, i) => {
+                                                const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
+                                                return (
+                                                    <tr key={i} className="hover:bg-blue-50 border-t">
+                                                        <td className="px-4 py-3"></td>
+                                                        <td className="px-4 py-3 text-sm">{'⭐'.repeat(s)}</td>
+                                                        <td className="px-4 py-3 font-bold">{c.card_id}</td>
+                                                        <td className="px-4 py-3 name-cell"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} placeholder="Add name" /></td>
+                                                        <td className="px-4 py-3"><Tags tags={c.tags || []} save={(t) => update(c.card_id, { tags: t })} /></td>
+                                                        <td className="px-4 py-3">
+                                                            {c.link ? <a href={c.link} target="_blank" className="primary-text text-sm hover:underline">Open</a> : <span className="text-gray-400 text-sm">-</span>}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex space-x-2">
+                                                                {[1, 2, 3, 4, 5].map(n => (
+                                                                    <button key={n} onClick={() => review(c.card_id, n)} className="w-10 h-10 border-2 rounded font-bold hover:text-white" style={{ borderColor: '#306AE7' }} onMouseEnter={(e) => (e.target.style.backgroundColor = '#306AE7')} onMouseLeave={(e) => (e.target.style.backgroundColor = 'white')}>{n}</button>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm text-gray-600">{c.review_count || 0} times</td>
+                                                        <td className="px-4 py-3"><button onClick={() => { setCurr(c); setShowNote(true); }} className="primary-text text-sm hover:underline">{c.note ? 'View' : 'Add'}</button></td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* 第二块: 已完成的卡片 (只读快照) */}
+                            {completedCards.length > 0 && (
+                                <div>
+                                    <h3 className="text-xl font-bold mb-4 text-green-600">Review Completed ({date})</h3>
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left font-semibold">Done</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Stars</th>
+                                                <th className="px-4 py-3 text-left font-semibold">ID</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Name</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Tags</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Link</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Review Count</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Note</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {completedCards.map((c, i) => {
+                                                const s = c.ef >= 2.8 ? 5 : c.ef >= 2.5 ? 4 : c.ef >= 2.2 ? 3 : c.ef >= 1.8 ? 2 : 1;
+                                                return (
+                                                    <tr key={i} className="bg-green-50 opacity-70 border-t">
+                                                        <td className="px-4 py-3"><span className="text-green-600 text-xl">✓</span></td>
+                                                        <td className="px-4 py-3 text-sm">{'⭐'.repeat(s)}</td>
+                                                        <td className="px-4 py-3 font-bold text-gray-600">{c.card_id}</td>
+                                                        <td className="px-4 py-3 name-cell text-gray-600">{c.name || '-'}</td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {(c.tags || []).map(t => <span key={t} className="px-2 py-1 rounded-full text-xs" style={{ backgroundColor: '#E8EFFD', color: '#306AE7' }}>{t}</span>)}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            {c.link ? <a href={c.link} target="_blank" className="primary-text text-sm hover:underline">Open</a> : <span className="text-gray-400 text-sm">-</span>}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm text-gray-600">{c.review_count || 0} times</td>
+                                                        <td className="px-4 py-3"><button onClick={() => { setCurr(c); setShowNote(true); }} className="primary-text text-sm hover:underline">{c.note ? 'View' : 'Add'}</button></td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </>
                     )}
                 </>
             );
@@ -716,8 +781,13 @@
             const [link, setLink] = useState('');
             const [error, setError] = useState('');
 
+            // 使用本地时间初始化日期
             useEffect(() => {
-                setDate(new Date().toISOString().split('T')[0]);
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                setDate(`${year}-${month}-${day}`);
             }, []);
 
             const handleLinkPaste = (e) => {
@@ -804,8 +874,13 @@
         function BatchModal({ date, setDate, onAdd, onClose }) {
             const [text, setText] = useState('');
 
+            // 使用本地时间初始化日期
             useEffect(() => {
-                setDate(new Date().toISOString().split('T')[0]);
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                setDate(`${year}-${month}-${day}`);
             }, []);
 
             const submit = async () => {
@@ -916,7 +991,9 @@
                             <h3 className="text-2xl font-bold">Card {card.card_id} - Notes</h3>
                             <button onClick={onClose} className="text-3xl hover:text-red-600">×</button>
                         </div>
-                        <div className="flex-1 p-6"><div ref={ref} className="h-full border-2 rounded" /></div>
+                        <div className="flex-1 p-6 overflow-hidden">
+                            <div ref={ref} className="h-full border-2 rounded overflow-y-auto" />
+                        </div>
                         <div className="p-6 border-t flex justify-end space-x-4">
                             <button onClick={onClose} className="px-6 py-3 border-2 rounded hover:bg-gray-50">Cancel</button>
                             <button onClick={() => onSave(content)} className="px-6 py-3 primary-btn text-white rounded">Save</button>
