@@ -22,8 +22,16 @@
             color: #306AE7;
         }
 
+
         .primary-bg {
             background-color: #306AE7;
+        }
+
+        .name-cell {
+            max-width: 250px;
+            word-wrap: break-word;
+            white-space: normal;
+            line-height: 1.4;
         }
     </style>
 </head>
@@ -111,12 +119,13 @@
         }
 
         function Main({ user, token, onLogout }) {
-            const [tab, setTab] = useState('library');
+            const [tab, setTab] = useState('Cards-Lists');
             const [cards, setCards] = useState([]);
             const [filtered, setFiltered] = useState([]);
             const [due, setDue] = useState([]);
             const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
             const [stats, setStats] = useState({ total_cards: 0, due_today: 0 });
+            const [todayNewCards, setTodayNewCards] = useState(0);
             const [msg, setMsg] = useState('');
             const [done, setDone] = useState(new Set());
             const [tags, setTags] = useState([]);
@@ -171,6 +180,13 @@
                         if (r4.ok) {
                             const d4 = await r4.json();
                             setCards(d4.cards || []);
+
+                            // ========== 添加这部分 ========== 
+                            // 计算今天新增的卡片数量
+                            const today = new Date().toISOString().split('T')[0];
+                            const newToday = d4.cards.filter(c => c.first_date === today).length;
+                            setTodayNewCards(newToday);
+                            // ================================
                         }
                     }
                 } catch (e) {
@@ -327,8 +343,15 @@
                                 </div>
                             </div>
                             <div className="flex items-center space-x-6">
+                                {/* ========== 添加这个新的统计卡片 ========== */}
                                 <div className="text-center">
-                                    <div className="text-sm text-gray-500">Today's Progress</div>
+                                    <div className="text-sm text-gray-500">Today's New Cards</div>
+                                    <div className="text-xl font-bold text-green-600">{todayNewCards}</div>
+                                </div>
+                                {/* ========================================== */}
+
+                                <div className="text-center">
+                                    <div className="text-sm text-gray-500">Today's Review</div>
                                     <div className="text-xl font-bold"><span className="text-green-600">{done.size}</span>/<span className="primary-text">{due.length}</span></div>
                                 </div>
                                 <div className="text-center">
@@ -346,8 +369,14 @@
                     <div className="max-w-7xl mx-auto px-6 py-8">
                         <div className="bg-white rounded-t-xl shadow border-b">
                             <div className="flex">
-                                <button onClick={() => setTab('library')} className={`px-8 py-4 font-semibold ${tab === 'library' ? 'primary-text border-b-4' : 'text-gray-500'}`} style={tab === 'library' ? { borderColor: '#306AE7' } : {}}>Library</button>
+                                {/* ========== 修改 library 为 cards-list ========== */}
+                                <button onClick={() => setTab('cards-list')} className={`px-8 py-4 font-semibold ${tab === 'cards-list' ? 'primary-text border-b-4' : 'text-gray-500'}`} style={tab === 'cards-list' ? { borderColor: '#306AE7' } : {}}>Cards List</button>
+
                                 <button onClick={() => setTab('today')} className={`px-8 py-4 font-semibold ${tab === 'today' ? 'primary-text border-b-4' : 'text-gray-500'}`} style={tab === 'today' ? { borderColor: '#306AE7' } : {}}>Today's Review</button>
+
+                                {/* ========== 添加新的标签页按钮 ========== */}
+                                <button onClick={() => window.open('https://docs.google.com/spreadsheets/d/1X-ZjRgFnvAt-WRole1yuXiTeEZwcgao2LiPH0yshCBg/edit?usp=sharing', '_blank')} className="px-8 py-4 font-semibold text-gray-500 hover:text-blue-600">System Operation Instructions</button>
+                                {/* ======================================= */}
                             </div>
                         </div>
 
@@ -400,7 +429,7 @@
                                             <td className="px-4 py-3">{isDone && <span className="text-green-600 text-xl">✓</span>}</td>
                                             <td className="px-4 py-3 text-sm">{'⭐'.repeat(s)}</td>
                                             <td className="px-4 py-3 font-bold">{c.card_id}</td>
-                                            <td className="px-4 py-3"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} placeholder="Add name" /></td>
+                                            <td className="px-4 py-3 name-cell"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} placeholder="Add name" /></td>
                                             <td className="px-4 py-3"><Tags tags={c.tags || []} save={(t) => update(c.card_id, { tags: t })} /></td>
                                             <td className="px-4 py-3">
                                                 {c.link ? <a href={c.link} target="_blank" className="primary-text text-sm hover:underline">Open</a> : <span className="text-gray-400 text-sm">-</span>}
@@ -499,7 +528,7 @@
                                         <tr key={i} className="border-t hover:bg-blue-50">
                                             <td className="px-4 py-3 text-sm">{'⭐'.repeat(s)}</td>
                                             <td className="px-4 py-3 font-bold"><EditField val={c.card_id} save={(v) => update(c.card_id, { new_card_id: v })} placeholder="ID" /></td>
-                                            <td className="px-4 py-3 max-w-xs truncate"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} placeholder="Name" /></td>
+                                            <td className="px-4 py-3 name-cell"><EditField val={c.name} save={(v) => update(c.card_id, { name: v })} placeholder="Name" /></td>
                                             <td className="px-4 py-3"><TagsWithDropdown tags={c.tags || []} allTags={allTags} save={(t) => update(c.card_id, { tags: t })} /></td>
                                             <td className="px-4 py-3 text-sm text-gray-600">{c.last_review_date || c.first_date}</td>
                                             <td className="px-4 py-3 text-sm text-gray-600">{c.next_review || '-'}</td>
