@@ -152,46 +152,68 @@ def get_all_cards():
 @app.route('/api/cards/due', methods=['POST'])
 @token_required
 def get_due_cards():
-    user_id = request.user_id
-    data = request.json or {}
-    date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
-    
     try:
+        data = request.get_json()
+        date_str = data.get('date')
+        user_id = request.user_id
+        
         target_date = datetime.strptime(date_str, '%Y-%m-%d')
-    except ValueError:
-        return jsonify({'error': 'Invalid date format'}), 400
-    
-    cards = get_user_cards(user_id)
-    due_cards = []
-    
-    for card_data in cards:
-        next_review = card_data.get('next_review')
-        if next_review:
-            if isinstance(next_review, str):
-                try:
-                    next_review_date = datetime.strptime(next_review, '%Y-%m-%d')
-                except:
-                    continue
-            else:
-                next_review_date = next_review
-            
-            if next_review_date.date() <= target_date.date():
-                due_cards.append({
-                    'card_id': card_data['card_id'],
-                    'name': card_data.get('name', ''),
-                    'first_date': card_data['first_date'],
-                    'last_review_date': card_data.get('last_review_date', card_data['first_date']),
-                    'review_count': card_data.get('review_count', 0),
-                    'next_review': card_data.get('next_review'),
-                    'tags': card_data.get('tags', []),
-                    'note': card_data.get('note', ''),
-                    'images': card_data.get('images', []),
-                    'ef': card_data.get('ef', 2.5),
-                    'interval': card_data.get('interval', 0),
-                    'link': card_data.get('link', '')
-                })
-    
-    return jsonify({'date': date_str, 'count': len(due_cards), 'cards': due_cards})
+
+        cards = get_user_cards(user_id)
+        due_cards = []
+        completed_cards = []
+
+        for card_data in cards:
+            next_review = card_data.get('next_review')
+            last_review_date = card_data.get('last_review_date')
+
+            # 统一构造返回的 card payload（避免写两遍）
+            payload = {
+                'card_id': card_data['card_id'],
+                'name': card_data.get('name', ''),
+                'first_date': card_data['first_date'],
+                'last_review_date': last_review_date or card_data['first_date'],
+                'review_count': card_data.get('review_count', 0),
+                'next_review': card_data.get('next_review'),
+                'tags': card_data.get('tags', []),
+                'note': card_data.get('note', ''),
+                'images': card_data.get('images', []),
+                'ef': card_data.get('ef', 2.5),
+                'interval': card_data.get('interval', 0),
+                'link': card_data.get('link', '')
+            }
+
+            # 1) due：next_review <= target_date
+            if next_review:
+                if isinstance(next_review, str):
+                    try:
+                        next_review_date = datetime.strptime(next_review, '%Y-%m-%d')
+                    except:
+                        next_review_date = None
+                else:
+                    next_review_date = next_review
+
+                if next_review_date and next_review_date.date() <= target_date.date():
+                    due_cards.append(payload)
+                    continue  # 已经是 due，就不用再判断 completed
+
+            # 2) completed：今天复习过（哪怕 next_review 已经推到未来）
+            if last_review_date == date_str:
+                completed_cards.append(payload)
+
+        # 合并返回：这样刷新后已复习的卡也会回来，不会“消失”
+        all_cards = due_cards + completed_cards
+
+        return jsonify({
+            'date': date_str,
+            'count': len(all_cards),
+            'cards': all_cards
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 
 @app.route('/api/cards/add', methods=['POST'])
 @token_required
