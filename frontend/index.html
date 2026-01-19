@@ -133,7 +133,7 @@
             const [stats, setStats] = useState({ total_cards: 0, due_today: 0 });
             const [todayNewCards, setTodayNewCards] = useState(0);
             const [msg, setMsg] = useState('');
-            const [done, setDone] = useState(new Set());
+           
 
             const [tags, setTags] = useState([]);
             const [search, setSearch] = useState('');
@@ -158,11 +158,7 @@
                 load();
             }, [tab, date]);
 
-            useEffect(() => {
-                if (tab !== 'today') return;
-                const saved = localStorage.getItem(`done_${date}`);
-                setDone(saved ? new Set(JSON.parse(saved)) : new Set());
-            }, [tab, date]);
+        
 
 
 
@@ -233,26 +229,49 @@
 
             const review = async (id, score) => {
                 try {
-                    const res = await api('/cards/review', { method: 'POST', body: JSON.stringify({ card_id: id, score, review_date: date }) });
+                    const res = await api('/cards/review', {
+                    method: 'POST',
+                    body: JSON.stringify({ card_id: id, score, review_date: date })
+                    });
+
                     if (res.ok) {
-                        const newDone = new Set([...done, id]);
-                        setDone(newDone);
+                    const data = await res.json();
+                    const nextReview = data?.card?.next_review;
+                    const reviewCount = data?.card?.review_count;
 
-                        localStorage.setItem(`done_${date}`, JSON.stringify([...newDone]));
+                    // ✅ 关键：立刻把 due 里的这张卡标记为“今天已复习”，页面会马上移动到 Completed
+                    setDue(prev =>
+                        prev.map(c =>
+                        c.card_id === id
+                            ? {
+                                ...c,
+                                last_review_date: date,
+                                next_review: nextReview ?? c.next_review,
+                                review_count: reviewCount ?? (c.review_count || 0) + 1
+                            }
+                            : c
+                        )
+                    );
 
-                        setMsg('Review successful');
-                        setTimeout(() => setMsg(''), 2000);
-                        const r1 = await api('/stats');
-                        if (r1.ok) {
-                            const d1 = await r1.json();
-                            setStats(d1);
-                        }
+                    setMsg('Review successful');
+                    setTimeout(() => setMsg(''), 2000);
+
+                    // stats 仍然可以刷新
+                    const r1 = await api('/stats');
+                    if (r1.ok) {
+                        const d1 = await r1.json();
+                        setStats(d1);
+                    }
+                    } else {
+                    setMsg('Review failed');
+                    setTimeout(() => setMsg(''), 2000);
                     }
                 } catch (e) {
                     setMsg('Review failed');
                     setTimeout(() => setMsg(''), 2000);
                 }
-            };
+                };
+
 
             const add = async (id, name, score, cardTags, link) => {
                 try {
@@ -338,12 +357,14 @@
             const totalPages = Math.ceil(filtered.length / perPage);
 
             const sortedDue = [...due].sort((a, b) => {
-                const aDone = done.has(a.card_id);
-                const bDone = done.has(b.card_id);
-                if (aDone && !bDone) return 1;
-                if (!aDone && bDone) return -1;
-                return 0;
+            const aDone = a.last_review_date === date;
+            const bDone = b.last_review_date === date;
+            if (aDone && !bDone) return 1;
+            if (!aDone && bDone) return -1;
+            return 0;
             });
+            const reviewedTodayCount = due.filter(c => c.last_review_date === date).length;
+
 
             return (
                 <div className="min-h-screen bg-gray-50">
@@ -365,8 +386,12 @@
                                 </div>
                                 <div className="text-center">
                                     <div className="text-sm text-gray-500">Today's Review</div>
-                                    <div className="text-xl font-bold"><span className="text-green-600">{done.size}</span>/<span className="primary-text">{due.length}</span></div>
+                                    <div className="text-xl font-bold">
+                                        <span className="text-green-600">{reviewedTodayCount}</span>/
+                                        <span className="primary-text">{due.length}</span>
+                                    </div>
                                 </div>
+
                                 <div className="text-center">
                                     <div className="text-sm text-gray-500">Total Cards</div>
                                     <div className="text-xl font-bold primary-text">{stats.total_cards || 0}</div>
@@ -398,7 +423,8 @@
 
                         <div className="bg-white rounded-b-xl shadow-lg p-8">
                             {tab === 'today' ? (
-                                <TodayView date={date} setDate={setDate} due={sortedDue} done={done} review={review} setShowBatch={setShowBatch} update={update} setCurr={setCurr} setShowNote={setShowNote} />
+                                <TodayView date={date} setDate={setDate} due={sortedDue} review={review} setShowBatch={setShowBatch} update={update} setCurr={setCurr} setShowNote={setShowNote} />
+
                             ) : tab === 'journey' ? (
                                 <StudyJourney cards={cards} setCurr={setCurr} setShowNote={setShowNote} setShowHist={setShowHist} del={del} update={update} allTags={tags} />
                             ) : (
@@ -415,9 +441,10 @@
             );
         }
 
-        function TodayView({ date, setDate, due, done, review, setShowBatch, update, setCurr, setShowNote }) {
-            const pendingCards = due.filter(c => !done.has(c.card_id));
-            const completedCards = due.filter(c => done.has(c.card_id));
+        function TodayView({ date, setDate, due, review, setShowBatch, update, setCurr, setShowNote }) {
+            const pendingCards = due.filter(c => c.last_review_date !== date);
+            const completedCards = due.filter(c => c.last_review_date === date);
+
 
             return (
                 <>
