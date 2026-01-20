@@ -774,7 +774,8 @@
                             {/* Month labels */}
                             <div className="flex mb-2 ml-8 text-xs text-gray-500 relative" style={{ height: '20px' }}>
                                 {monthLabels.map(({ month, weekIndex }) => {
-                                    const leftPosition = weekIndex * 14;
+                                    const monthGapsBefore = monthLabels.filter(m => m.weekIndex < weekIndex).length;
+                                    const leftPosition = weekIndex * 16 + monthGapsBefore * 8;
                                     return (
                                         <div
                                             key={month}
@@ -802,22 +803,34 @@
 
                                 {/* Weeks */}
                                 <div className="flex gap-1">
-                                    {contributionWeeks.map((week, weekIdx) => (
-                                        <div key={weekIdx} className="flex flex-col gap-1">
-                                            {week.days.map((day, dayIdx) => (
-                                                <div
-                                                    key={dayIdx}
-                                                    className="w-3 h-3 rounded-sm cursor-pointer transition-all hover:ring-2 hover:ring-blue-400"
-                                                    style={{ backgroundColor: getColor(day.count, day.isCurrentYear) }}
-                                                    title={`${day.date}: ${day.count} activities`}
-                                                />
-                                            ))}
-                                        </div>
-                                    ))}
+                                    {contributionWeeks.map((week, weekIdx) => {
+                                        const isNewMonth = weekIdx > 0 && week.month !== null &&
+                                            contributionWeeks[weekIdx - 1].month !== week.month;
+
+                                        return (
+                                            <React.Fragment key={weekIdx}>
+                                                {isNewMonth && <div className="w-2"></div>}
+                                                <div className="flex flex-col gap-1">
+                                                    {week.days.map((day, dayIdx) => (
+                                                        <div
+                                                            key={dayIdx}
+                                                            className="w-3 h-3 rounded-sm cursor-pointer transition-all hover:ring-2 hover:ring-blue-400"
+                                                            style={{ backgroundColor: getColor(day.count, day.isCurrentYear) }}
+                                                            title={`${day.date}: ${day.count} activities`}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </React.Fragment>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
                     </div>
+
+
+
+
 
                     <div className="flex space-x-4 mb-6">
                         <button onClick={() => setFilterMode('most-reviewed')} className={`px-6 py-3 rounded-lg font-medium border-2 ${filterMode === 'most-reviewed' ? 'primary-bg text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>Most Reviewed First</button>
