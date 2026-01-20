@@ -48,17 +48,36 @@
 
         function parseLeetCodeURL(url) {
             try {
-                const match = url.match(/leetcode\.com\/problems\/([\w-]+)/);
-                if (match) {
-                    const slug = match[1];
-                    const name = slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                    const numMatch = url.match(/\/(\d+)\//);
-                    const num = numMatch ? numMatch[1] : '';
-                    return { name, num: num || slug };
-                }
-            } catch (e) { }
-            return null;
+                const u = (url || "").trim();
+
+                // 支持：
+                // https://leetcode.com/problems/xxx/
+                // https://leetcode.cn/problems/xxx/
+                // http://www.leetcode.com/problems/xxx/?...
+                const match = u.match(/^(https?:\/\/)?(www\.)?leetcode\.(com|cn)\/problems\/([\w-]+)/i);
+
+
+                if (!match) return null;
+
+                const slug = match[4]; // 第4个捕获组才是题目slug
+
+                const name = slug
+                    .split('-')
+                    .filter(Boolean)
+                    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                    .join(' ');
+
+                // 你现在的ID逻辑：优先取数字题号，否则用slug
+                const numMatch = u.match(/\/(\d+)\//);
+                const num = numMatch ? numMatch[1] : slug;
+
+                return { name, num };
+            } catch (e) {
+                return null;
+            }
         }
+
+
 
         function App() {
             const [token, setToken] = useState(localStorage.getItem('token'));
@@ -133,7 +152,7 @@
             const [stats, setStats] = useState({ total_cards: 0, due_today: 0 });
             const [todayNewCards, setTodayNewCards] = useState(0);
             const [msg, setMsg] = useState('');
-           
+
 
             const [tags, setTags] = useState([]);
             const [search, setSearch] = useState('');
@@ -158,7 +177,7 @@
                 load();
             }, [tab, date]);
 
-        
+
 
 
 
@@ -230,47 +249,47 @@
             const review = async (id, score) => {
                 try {
                     const res = await api('/cards/review', {
-                    method: 'POST',
-                    body: JSON.stringify({ card_id: id, score, review_date: date })
+                        method: 'POST',
+                        body: JSON.stringify({ card_id: id, score, review_date: date })
                     });
 
                     if (res.ok) {
-                    const data = await res.json();
-                    const nextReview = data?.card?.next_review;
-                    const reviewCount = data?.card?.review_count;
+                        const data = await res.json();
+                        const nextReview = data?.card?.next_review;
+                        const reviewCount = data?.card?.review_count;
 
-                    // ✅ 关键：立刻把 due 里的这张卡标记为“今天已复习”，页面会马上移动到 Completed
-                    setDue(prev =>
-                        prev.map(c =>
-                        c.card_id === id
-                            ? {
-                                ...c,
-                                last_review_date: date,
-                                next_review: nextReview ?? c.next_review,
-                                review_count: reviewCount ?? (c.review_count || 0) + 1
-                            }
-                            : c
-                        )
-                    );
+                        // ✅ 关键：立刻把 due 里的这张卡标记为“今天已复习”，页面会马上移动到 Completed
+                        setDue(prev =>
+                            prev.map(c =>
+                                c.card_id === id
+                                    ? {
+                                        ...c,
+                                        last_review_date: date,
+                                        next_review: nextReview ?? c.next_review,
+                                        review_count: reviewCount ?? (c.review_count || 0) + 1
+                                    }
+                                    : c
+                            )
+                        );
 
-                    setMsg('Review successful');
-                    setTimeout(() => setMsg(''), 2000);
+                        setMsg('Review successful');
+                        setTimeout(() => setMsg(''), 2000);
 
-                    // stats 仍然可以刷新
-                    const r1 = await api('/stats');
-                    if (r1.ok) {
-                        const d1 = await r1.json();
-                        setStats(d1);
-                    }
+                        // stats 仍然可以刷新
+                        const r1 = await api('/stats');
+                        if (r1.ok) {
+                            const d1 = await r1.json();
+                            setStats(d1);
+                        }
                     } else {
-                    setMsg('Review failed');
-                    setTimeout(() => setMsg(''), 2000);
+                        setMsg('Review failed');
+                        setTimeout(() => setMsg(''), 2000);
                     }
                 } catch (e) {
                     setMsg('Review failed');
                     setTimeout(() => setMsg(''), 2000);
                 }
-                };
+            };
 
 
             const add = async (id, name, score, cardTags, link) => {
@@ -357,11 +376,11 @@
             const totalPages = Math.ceil(filtered.length / perPage);
 
             const sortedDue = [...due].sort((a, b) => {
-            const aDone = a.last_review_date === date;
-            const bDone = b.last_review_date === date;
-            if (aDone && !bDone) return 1;
-            if (!aDone && bDone) return -1;
-            return 0;
+                const aDone = a.last_review_date === date;
+                const bDone = b.last_review_date === date;
+                if (aDone && !bDone) return 1;
+                if (!aDone && bDone) return -1;
+                return 0;
             });
             const reviewedTodayCount = due.filter(c => c.last_review_date === date).length;
 
@@ -656,28 +675,39 @@
 
             const weeks = [];
             let currentWeek = [];
-            let lastMonth = -1;
 
-            days.forEach((day, i) => {
+            days.forEach((day) => {
+                // 周日开新列（说明上一列结束）
                 if (day.day === 0 && currentWeek.length > 0) {
-                    weeks.push({ days: currentWeek, monthBreak: false });
+                    weeks.push({ days: currentWeek });
                     currentWeek = [];
                 }
-
-                if (day.month !== lastMonth && currentWeek.length > 0 && day.day !== 0) {
-                    weeks.push({ days: currentWeek, monthBreak: true });
-                    currentWeek = [];
-                }
-
                 currentWeek.push(day);
-                lastMonth = day.month;
             });
 
             if (currentWeek.length > 0) {
-                weeks.push({ days: currentWeek, monthBreak: false });
+                weeks.push({ days: currentWeek });
             }
 
-            const months = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'];
+            // ✅ 在“渲染前”再计算 monthBreak：当本周(这一列)的月份 != 上一周的月份时，插入间隔
+            let prevMonth = null;
+
+            const weeksWithBreak = weeks.map((w) => {
+                // ✅ 只用“本年里的那一天”来判定月份（避免前面那几格属于去年12月造成异常断层）
+                const firstInYearDay = w.days.find(d => d.inCurrentYear);
+                const month = firstInYearDay ? firstInYearDay.month : null;
+
+                const monthBreak = prevMonth !== null && month !== null && month !== prevMonth;
+
+                if (month !== null) prevMonth = month;
+
+                return { ...w, monthBreak };
+            });
+
+
+
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 
             return (
                 <div>
@@ -694,7 +724,7 @@
 
                     <div className="bg-white border-2 rounded-xl p-6 mb-8 shadow-sm overflow-x-auto">
                         <div className="flex space-x-1 pb-4 min-w-max">
-                            {weeks.map((week, wi) => (
+                            {weeksWithBreak.map((week, wi) => (
                                 <React.Fragment key={wi}>
                                     {week.monthBreak && <div className="w-2"></div>}
                                     <div className="flex flex-col space-y-1">
