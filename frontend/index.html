@@ -116,7 +116,7 @@
                 <div className="min-h-screen bg-white flex items-center justify-center">
                     <div className="bg-white border-2 border-gray-200 rounded-3xl shadow-xl p-10 w-96">
                         <div className="text-center mb-8">
-                            <img src="static/pic.jpg" alt="MemoCode Logo" className="w-20 h-20 mx-auto mb-4 rounded-full shadow-lg object-cover" />
+                            <img src="static/pic.jpg" alt="MemoCode Logo" className="w-32 h-32 mx-auto mb-4 shadow-lg object-contain" />
                             <h1 className="text-3xl font-bold mb-2">MemoCode</h1>
                             <p className="text-gray-500">Intelligent Learning Scheduler</p>
                         </div>
@@ -383,6 +383,9 @@
                 return 0;
             });
             const reviewedTodayCount = due.filter(c => c.last_review_date === date).length;
+            // 计算待复习和已复习的数量
+            const pendingCount = due.filter(c => c.last_review_date !== date).length;
+            const completedCount = due.filter(c => c.last_review_date === date).length;
 
 
             return (
@@ -392,7 +395,7 @@
                     <div className="bg-white shadow">
                         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between">
                             <div className="flex items-center space-x-4">
-                                <img src="static/pic.jpg" alt="MemoCode" className="w-12 h-12 rounded-full shadow-lg object-cover" />
+                                <img src="static/pic.jpg" alt="MemoCode" className="w-16 h-16 shadow-lg object-contain" />
                                 <div>
                                     <h1 className="text-xl font-bold">MemoCode</h1>
                                     <p className="text-xs text-gray-500">Intelligent Learning Scheduler</p>
@@ -406,8 +409,8 @@
                                 <div className="text-center">
                                     <div className="text-sm text-gray-500">Today's Review</div>
                                     <div className="text-xl font-bold">
-                                        <span className="text-green-600">{reviewedTodayCount}</span>/
-                                        <span className="primary-text">{due.length}</span>
+                                        <span className="text-green-600">{completedCount}</span>/
+                                        <span className="primary-text">{pendingCount}</span>
                                     </div>
                                 </div>
 
@@ -478,7 +481,7 @@
                         <>
                             {pendingCards.length > 0 && (
                                 <div className="mb-12">
-                                    <h3 className="text-xl font-bold mb-4 primary-text">Ready for Review ({date})</h3>
+                                    <h3 className="text-xl font-bold mb-4 primary-text">Ready for Review - {pendingCards.length} cards</h3>
                                     <table className="w-full">
                                         <thead className="bg-gray-50">
                                             <tr>
@@ -523,7 +526,7 @@
 
                             {completedCards.length > 0 && (
                                 <div>
-                                    <h3 className="text-xl font-bold mb-4 text-green-600">Review Completed ({date})</h3>
+                                    <h3 className="text-xl font-bold mb-4 text-green-600">Review Completed - {completedCards.length} cards</h3>
                                     <table className="w-full">
                                         <thead className="bg-gray-50">
                                             <tr>
