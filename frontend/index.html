@@ -772,9 +772,11 @@
                         {/* Calendar Grid */}
                         <div className="overflow-x-auto">
                             {/* Month labels */}
-                            <div className="flex mb-2 ml-8 text-xs text-gray-500 relative" style={{ height: '20px' }}>
-                                {monthLabels.map(({ month, weekIndex }) => {
-                                    const monthGapsBefore = monthLabels.filter(m => m.weekIndex < weekIndex).length;
+                            <div className="mb-2 text-xs text-gray-500 relative" style={{ height: '20px', marginLeft: '52px' }}>
+                                {monthLabels.map(({ month, weekIndex }, index) => {
+                                    // 计算累积的月份间隔数（从第二个月开始，每个月+1）
+                                    const monthGapsBefore = index;
+                                    // 格子12px + gap 4px = 16px per week, 月份间隔8px
                                     const leftPosition = weekIndex * 16 + monthGapsBefore * 8;
                                     return (
                                         <div
