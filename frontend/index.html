@@ -626,83 +626,100 @@
 
             const activities = getActivityData();
 
-            const generateYearGrid = () => {
+            // ====== 1) 生成 GitHub 风格的 weeks（每列=一周，7行），并去掉年外“重复天数格子” ======
+            const buildWeeksOfYear = () => {
                 const today = new Date();
                 const year = today.getFullYear();
-                const startDate = new Date(year, 0, 1);
 
-                const firstDay = startDate.getDay();
-                const adjustedStart = new Date(startDate);
-                if (firstDay !== 0) {
-                    adjustedStart.setDate(startDate.getDate() - firstDay);
-                }
+                const yearStart = new Date(year, 0, 1);   // Jan 1
+                const yearEnd = new Date(year, 11, 31);   // Dec 31
 
-                const days = [];
-                let currentDate = new Date(adjustedStart);
-                const endDate = new Date(year, 11, 31);
+                // 找到包含 Jan1 的那一周的“周日”
+                const firstSunday = new Date(yearStart);
+                firstSunday.setDate(yearStart.getDate() - yearStart.getDay()); // Sun=0
 
-                while (currentDate <= endDate || currentDate.getDay() !== 0) {
-                    const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+                // 找到包含 Dec31 的那一周的“周六”
+                const lastSaturday = new Date(yearEnd);
+                lastSaturday.setDate(yearEnd.getDate() + (6 - yearEnd.getDay()));
+
+                const totalWeeks =
+                    Math.floor((lastSaturday - firstSunday) / (7 * 24 * 60 * 60 * 1000)) + 1;
+
+                // 每列固定 7 个位置（Sun..Sat），年外 padding 用 null 占位（后面渲染时“删除格子”）
+                const weeks = Array.from({ length: totalWeeks }, () => ({
+                    days: Array(7).fill(null)
+                }));
+
+                // 填充年内每一天
+                for (let d = new Date(yearStart); d <= yearEnd; d.setDate(d.getDate() + 1)) {
+                    const dateObj = new Date(d);
+                    const weekIndex = Math.floor((dateObj - firstSunday) / (7 * 24 * 60 * 60 * 1000));
+                    const dow = dateObj.getDay(); // 0..6
+
+                    const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
                     const count = activities[dateStr] || 0;
-                    const inCurrentYear = currentDate.getFullYear() === year;
 
-                    days.push({
+                    weeks[weekIndex].days[dow] = {
                         date: dateStr,
-                        count: inCurrentYear ? count : 0,
-                        day: currentDate.getDay(),
-                        month: currentDate.getMonth(),
-                        year: currentDate.getFullYear(),
-                        inCurrentYear: inCurrentYear
-                    });
-
-                    currentDate.setDate(currentDate.getDate() + 1);
+                        count,
+                        day: dow,
+                        month: dateObj.getMonth(),
+                        year: dateObj.getFullYear(),
+                        inCurrentYear: true
+                    };
                 }
 
-                return days;
+                // ✅ monthBreak：当本列第一个“年内天”的月份 != 上一列月份时，插入空隙
+                let prevMonth = null;
+                const weeksWithBreak = weeks.map((w) => {
+                    const firstValidDay = w.days.find(x => x && x.inCurrentYear);
+                    const weekMonth = firstValidDay ? firstValidDay.month : prevMonth;
+
+                    const monthBreak =
+                        prevMonth !== null &&
+                        weekMonth !== null &&
+                        weekMonth !== prevMonth;
+
+                    prevMonth = weekMonth;
+                    return { ...w, monthBreak, weekMonth };
+                });
+
+                return weeksWithBreak;
             };
 
-            const days = generateYearGrid();
+            const weeksWithBreak = buildWeeksOfYear();
 
-            const getColor = (count, inCurrentYear) => {
-                if (!inCurrentYear) return '#ebedf0';
-                if (count === 0) return '#ebedf0';
-                if (count <= 2) return '#9be9a8';
-                if (count <= 5) return '#40c463';
-                if (count <= 10) return '#30a14e';
-                if (count <= 20) return '#216e39';
-                return '#0d4429';
-            };
-
-            const weeks = [];
-            let currentWeek = [];
-
-            days.forEach((day) => {
-                // 周日开新列（说明上一列结束）
-                if (day.day === 0 && currentWeek.length > 0) {
-                    weeks.push({ days: currentWeek });
-                    currentWeek = [];
+            // ✅ monthLabels：每个月第一次出现的 weekIndex（用于月份文字对齐）
+            const monthLabels = [];
+            const seenMonth = new Set();
+            weeksWithBreak.forEach((w, wi) => {
+                const m = w.weekMonth;
+                if (m === null || m === undefined) return;
+                if (!seenMonth.has(m)) {
+                    seenMonth.add(m);
+                    monthLabels.push({ month: m, weekIndex: wi });
                 }
-                currentWeek.push(day);
             });
 
-            if (currentWeek.length > 0) {
-                weeks.push({ days: currentWeek });
-            }
+            // ====== 2) 计算每列 week 的真实 x 坐标（把 monthBreak 空隙也算进去） ======
+            const CELL = 12;   // w-3
+            const GAP = 4;     // gap-x-1
+            const BREAK = 12;  // monthBreak 用 w-3
 
-            // ✅ 在“渲染前”再计算 monthBreak：当本周(这一列)的月份 != 上一周的月份时，插入间隔
-            let prevMonth = null;
+            const weekX = (() => {
+                let x = 0;
+                const arr = [];
+                for (let wi = 0; wi < weeksWithBreak.length; wi++) {
+                    const w = weeksWithBreak[wi];
+                    if (w.monthBreak) x += BREAK + GAP;
+                    arr[wi] = x;
+                    x += CELL + GAP;
+                }
+                return arr;
+            })();
 
-            const weeksWithBreak = weeks.map((w) => {
-                // ✅ 只用“本年里的那一天”来判定月份（避免前面那几格属于去年12月造成异常断层）
-                const firstInYearDay = w.days.find(d => d.inCurrentYear);
-                const month = firstInYearDay ? firstInYearDay.month : null;
 
-                const monthBreak = prevMonth !== null && month !== null && month !== prevMonth;
 
-                if (month !== null) prevMonth = month;
-
-                return { ...w, monthBreak };
-            });
 
 
 
@@ -723,21 +740,48 @@
                     </div>
 
                     <div className="bg-white border-2 rounded-xl p-6 mb-8 shadow-sm overflow-x-auto">
-                        <div className="flex space-x-1 pb-4 min-w-max">
+                        <div className="flex gap-x-1 pb-4 min-w-max">
                             {weeksWithBreak.map((week, wi) => (
                                 <React.Fragment key={wi}>
-                                    {week.monthBreak && <div className="w-2"></div>}
-                                    <div className="flex flex-col space-y-1">
-                                        {week.days.map((day, di) => (
-                                            <div key={di} className="w-3 h-3 rounded-sm cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all" style={{ backgroundColor: getColor(day.count, day.inCurrentYear) }} title={`${day.date}: ${day.count} activities`} />
-                                        ))}
+                                    {/* 月份切换空隙 */}
+                                    {week.monthBreak && <div className="w-3"></div>}
+
+                                    <div className="flex flex-col gap-y-1">
+                                        {week.days.map((day, di) => {
+                                            // 年外 padding：不画格子，但保留高度
+                                            if (!day) {
+                                                // ✅ 真正“隐藏但占位”：不显示，但保留格子位置用于对齐
+                                                return <div key={di} className="w-3 h-3 invisible pointer-events-none" aria-hidden="true" />;
+                                            }
+
+
+                                            return (
+                                                <div
+                                                    key={di}
+                                                    className="w-3 h-3 rounded-sm cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                                                    style={{ backgroundColor: getColor(day.count, true) }}
+                                                    title={`${day.date}: ${day.count} activities`}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 </React.Fragment>
                             ))}
                         </div>
-                        <div className="flex justify-between mt-4 text-xs text-gray-400 px-2">
-                            {months.map((m, i) => <span key={i}>{m}</span>)}
+
+                        {/* Month labels (GitHub-style aligned to columns) */}
+                        <div className="relative mt-4 h-4 min-w-max">
+                            {monthLabels.map(({ month, weekIndex }) => (
+                                <span
+                                    key={month}
+                                    className="absolute text-xs text-gray-400"
+                                    style={{ left: weekX[weekIndex] }}
+                                >
+                                    {months[month]}
+                                </span>
+                            ))}
                         </div>
+
                     </div>
 
                     <div className="flex space-x-4 mb-6">
