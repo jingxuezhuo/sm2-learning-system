@@ -774,10 +774,25 @@
                             {/* Month labels */}
                             <div className="mb-2 text-xs text-gray-500 relative" style={{ height: '20px', marginLeft: '52px' }}>
                                 {monthLabels.map(({ month, weekIndex }, index) => {
-                                    // 计算累积的月份间隔数（从第二个月开始，每个月+1）
-                                    const monthGapsBefore = index;
-                                    // 格子12px + gap 4px = 16px per week, 月份间隔8px
-                                    const leftPosition = weekIndex * 16 + monthGapsBefore * 8;
+                                    // 计算实际的像素位置
+                                    // 需要遍历前面的周，累加宽度
+                                    let leftPosition = 0;
+                                    let monthGapsEncountered = 0;
+
+                                    for (let i = 0; i < weekIndex; i++) {
+                                        leftPosition += 16; // 每周 12px + 4px gap
+
+                                        // 检查这一周后面是否有月份切换
+                                        if (i < contributionWeeks.length - 1) {
+                                            const currentMonth = contributionWeeks[i].month;
+                                            const nextMonth = contributionWeeks[i + 1].month;
+                                            if (currentMonth !== null && nextMonth !== null && currentMonth !== nextMonth) {
+                                                leftPosition += 8; // 添加月份间隔
+                                                monthGapsEncountered++;
+                                            }
+                                        }
+                                    }
+
                                     return (
                                         <div
                                             key={month}
