@@ -625,6 +625,15 @@
             };
 
             const activities = getActivityData();
+            const getColor = (count, inCurrentYear) => {
+                if (!inCurrentYear) return '#ebedf0';
+                if (count === 0) return '#ebedf0';
+                if (count <= 2) return '#9be9a8';
+                if (count <= 5) return '#40c463';
+                if (count <= 10) return '#30a14e';
+                if (count <= 20) return '#216e39';
+                return '#0d4429';
+            };
 
             // ====== 1) 生成 GitHub 风格的 weeks（每列=一周，7行），并去掉年外“重复天数格子” ======
             const buildWeeksOfYear = () => {
@@ -1325,7 +1334,8 @@
             );
         }
 
-        ReactDOM.render(<App />, document.getElementById('root'));
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
     </script>
 </body>
 
